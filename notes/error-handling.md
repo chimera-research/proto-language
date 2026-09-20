@@ -71,7 +71,7 @@ proto-tools also raises by default. `PROTO_CAPTURE_ERRORS=1` switches tool wrapp
 
 `MissingAssetError` always raises in proto-tools, regardless of `PROTO_CAPTURE_ERRORS`, so unprovisioned gated weights or large databases can be reported or skipped by the caller.
 
-See `proto-tools/notes/error-handling.md` for the full tool-side contract.
+See `../diablo-tools/notes/error-handling.md` for the full tool-side contract.
 
 ## Style
 

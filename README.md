@@ -1,4 +1,12 @@
-# Proto Language
+# Diablo Language
+
+The Diablo downstream distribution of [Proto Language](https://github.com/evo-design/proto-language).
+Its install name is `diablo-language`, with compatible `proto_language` imports and
+both `diablo-language` and `proto-language` CLI commands. It depends on the independent
+`diablo-tools` distribution (imported as `proto_tools`). Use the
+[Diablo Lang workspace](https://github.com/chimera-research/diablo-lang) for the
+Flox + moon + uv development environment and LM/agent examples.
+
 
 ![Proto Tools](https://proto-bio.github.io/proto-assets/covers/open-wings-code/carousel.png)
 
@@ -7,7 +15,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/evo-design/proto-language/blob/main/LICENSE)
 [![Docs](https://img.shields.io/badge/docs-proto.evodesign.org-blue)](https://proto.evodesign.org/docs/language/introduction)
 [![bioRxiv](https://img.shields.io/badge/bioRxiv-2026.06.22.733870-b31b1b.svg)](https://www.biorxiv.org/content/10.64898/2026.06.22.733870)
-[![Modal](https://img.shields.io/badge/Modal-ready--to--deploy-brightgreen?logo=modal&logoColor=white)](proto-tools/proto_tools/modal/README.md)
+[![Modal](https://img.shields.io/badge/Modal-ready--to--deploy-brightgreen?logo=modal&logoColor=white)](https://github.com/chimera-research/proto-tools/blob/codex/independent-diablo-packages/proto_tools/modal/README.md)
 [![Arc Institute blog](https://img.shields.io/badge/Blog-0073E6?logo=data%3Aimage%2Fpng%3Bbase64%2CiVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAQAAAD9CzEMAAADrElEQVR42u2WX4jUVRTHv%2Bf%2BfjM7iqXWmFZGmWEFWiBR%2BxBBsSY9CFKQGT1ElKhsEuRrEVFPGVu2RpsplWGUCWbURpkSYZtDEj4oKmYvGxHUruui7czvz6eHuTPzm3HsaQSD%2BcIMzJl77znf7zn33CN10UUX%2F39YqwFvMS6xZ%2BySMCCnuGqztDMOXObwQFKfftUxHdVxHsYIOiwKxiz%2BoIrvJVyndQ8kdhJRJiZmSYddYBJFxoCUCBiQCNsyDaviYYTNQhIQ4jBcbU12YyixnjJfAxHwJzObqwkjvDgnrLXyWtbiJE7wObcACRHwZDsOXMdjfMprGDN4hRHeoafGg%2FsYosRJfmCQB5rCI5BYDKyUOAxUgIONKDCMhWzkSyYA2CYxDEDKHEliPnuBw6ynn1EANrcKNMQ40zDWAhEJCUt9%2BYoA40HOATBFxEs8BJSBCeZK3MRvwCf%2BtIVMkgArsgkuMMlmCeNqxjyHLQ2RMInZHCChDLzNUeAcE4xSxPEj8DfXSOQJJY4QU%2BHNevwYq4DbJfISW72Dv7iqoSR5iXeBCinjlFjFAuYwV%2BIJIGF3na9xEoD%2BbIJ%2F4oiEI8DorSd6TYZDiPEBMEXKPnIZgUdIgeex6lqM99jPFgqN4xcAT2PkCMlJHPQcSlg90aHE%2B8A%2FwCaJgg%2FnBqZIgNUXVp2rf69VRZ%2FJWWSxRTh9I8mU6i7dLdp0pQKm2FLJ0CL1KG5unbiq81DClBDoKX1hZySu1Uqt0B0KlShUrFDP2CHa3itq%2FXieJCRloq91Y%2Bc%2Fy1XUCyxmj47rOZ1Sv5Zqp9%2F2CEVL%2FvN9cH7lrW3vMoHEML8zxFk%2Bprf%2B5z31RD%2Fr9c%2Fm4C3%2FO5BY5vN1qFZF2eOdxHwmgRGW1KslIMAo%2BY2%2F4LCLOKjunwJi4H6JHq9%2FIHFbddFG4HV%2FdLZi1vgbDfdiBE0OBmsVg5P4jpQKKae4McPgUU6InMRpfq7dwKbGW2Tcc%2FhQIk%2BekO3ewRsEFDAvUh9QIQZG2cCd3EwfA8C6agdM2dW2AecZJaJMhTGu97YdREwSsb3loRoAUsr%2BPTwPwFeS%2BIgEgBKDLPKEHcZytnKaBs6wgWXsyFi%2BZRNF32cDiZeJyGIvs3ChAm1TLGmGisrXithSrtCVOqBhmZAp0XT1aJrO6tV64DM1XYGfoRKcvchuPa5ezdN5HdMe29W54acxlaj5BZGsqXckjXkOp9bHEXGBLclOgDg5pZZWnVlymc%2BEXXTRxeWDfwGkGF0Pfq%2BibAAAAABJRU5ErkJggg%3D%3D)](https://arcinstitute.org/news/proto)
 
 > [!NOTE]
@@ -28,13 +36,16 @@ Proto-language is open source under an MIT license. Contributions are welcome!
 The package requires Python 3.10 or later and pip:
 
 ```bash
-pip install git+https://github.com/evo-design/proto-language.git
+git clone --branch codex/independent-diablo-packages https://github.com/chimera-research/proto-language.git diablo-language
+cd diablo-language
+bash scripts/bootstrap-tools.sh
+pip install -e ../diablo-tools -e .
 ```
 
 System tools that standalone tool environments require in order to build (git, curl, gcc, make, cmake) are automatically provisioned on first use through proto-tools' shared **foundation environment**, so no manual setup is necessary.
 
 > [!NOTE]
-> A direct PyPI install (`pip install proto-language`) is planned.
+> Diablo packages are installed from source and are not published to PyPI. Install either the Diablo or upstream Proto distributions in an environment because they share Python import names.
 
 > [!NOTE]
 > Contributors should instead use the editable installation described in [CONTRIBUTING.md](CONTRIBUTING.md#development-setup).
@@ -56,7 +67,7 @@ To override only the model-weights location, set `export PROTO_MODEL_CACHE=/path
 
 Some generators and constraints load gated models (for example ESM3, AlphaGenome, and AlphaFold3) that require accepting a license and authenticating with HuggingFace. Set `HF_TOKEN` in the environment after accepting each model's terms. See [`proto-tools/README.md`](https://github.com/evo-design/proto-tools#step-3-gated-model-access-optional-) for the full procedure and the list of gated models.
 
-### Step 4: Remote compute (optional) <a href="https://modal.com"><img src="proto-tools/guides/assets/modal/modal-logo.png" alt="Modal" height="20" align="center"></a>
+### Step 4: Remote compute (optional) <a href="https://modal.com"><img src="https://raw.githubusercontent.com/chimera-research/proto-tools/main/guides/assets/modal/modal-logo.png" alt="Modal" height="20" align="center"></a>
 
 Tools can execute in remote containers on [Modal](https://modal.com) instead of on your own machine, so a program can reach more GPUs than are installed locally. Deployments ship with proto-tools, so hosting one is a single command.
 

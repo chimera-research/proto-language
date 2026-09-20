@@ -34,14 +34,14 @@
     {
       "name": "Tools",
       "root": "proto_tools/tools",
-      "root_search": ["proto-tools/proto_tools/tools", "../proto-tools/proto_tools/tools"],
+      "root_search": ["../diablo-tools/proto_tools/tools"],
       "registry_decorators": ["tool"],
       "checks": ["all_consistency", "registry_exports"]
     },
     {
       "name": "Tools Package Root",
       "root": "proto_tools",
-      "root_search": ["proto-tools/proto_tools", "../proto-tools/proto_tools"],
+      "root_search": ["../diablo-tools/proto_tools"],
       "checks": ["all_consistency"],
       "depth": 0
     }

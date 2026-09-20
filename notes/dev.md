@@ -1,6 +1,6 @@
 # Development Guide
 
-Dev workflow for `proto-language` contributors: commands, initial setup, submodule sync, worktrees, the export-chain validator, and the CI workflows that gate PRs. For testing specifics see `notes/testing.md`; for batching see `notes/batching.md`.
+Dev workflow for `proto-language` contributors: commands, initial setup, independent fork checkouts, worktrees, the export-chain validator, and the CI workflows that gate PRs. For testing specifics see `notes/testing.md`; for batching see `notes/batching.md`.
 
 ## Quick Reference
 
@@ -16,67 +16,21 @@ python .github/scripts/validate_exports.py --verbose  # export-chain consistency
 
 ## Initial Setup
 
-Follow the [README](../README.md#developers) for the editable install of `proto-language` plus the `proto-tools` submodule. The README is the source of truth; don't duplicate setup steps here.
+Follow [CONTRIBUTING.md](../CONTRIBUTING.md#development-setup). The tools source lives
+in the independent sibling `../diablo-tools` repository. `scripts/bootstrap-tools.sh`
+clones the tested tools revision when that directory is absent. Existing checkouts
+are left in place so local branches and work survive repeated setup.
 
-## Submodule Sync
-
-`proto-tools` is a git submodule tracking `main` (`.gitmodules` sets `branch = main`, `ignore = dirty`).
-
-Pull both repos together when the submodule reference changes upstream:
-
-```bash
-git pull --recurse-submodules
-# or:
-git pull
-git submodule update --init --recursive
-```
-
-Bump `proto-tools` to the latest published `main` and commit the new pointer in the parent repo:
-
-```bash
-git submodule update --remote proto-tools
-git add proto-tools
-git commit -m "Bump proto-tools submodule"
-```
-
-Set once per clone to auto-recurse on every `git pull`:
-
-```bash
-git config submodule.recurse true
-```
-
-CI workflows that touch `proto-tools` need a `CI_SUBMODULE_ACCESS` PAT (fine- grained or `repo`-scoped classic) granting access to both `evo-design/proto- language` and `evo-design/proto-tools`, stored under `Settings → Secrets and variables → Actions`.
+Use the [Diablo Lang workspace](https://github.com/chimera-research/diablo-lang) for
+Flox + moon + uv and the integration checks. `uv` resolves the language package's
+`diablo-tools` dependency from the sibling through `[tool.uv.sources]`.
 
 ## Git Worktrees
 
-Worktrees check out multiple branches into separate directories without stashing the current branch.
-
-```bash
-git worktree list
-git worktree add /path/to/wt existing-branch
-git worktree add -b new-branch /path/to/wt
-git worktree remove /path/to/wt
-```
-
-Parent repo — submodules are not auto-initialized in a fresh worktree:
-
-```bash
-git worktree add ../proto-language-feature feature-branch
-cd ../proto-language-feature
-git submodule update --init --recursive
-```
-
-Submodule (independent of any parent worktree):
-
-```bash
-cd proto-tools
-git worktree add ../proto-tools-feature feature-branch
-git worktree add -b my-feature ../proto-tools-my-feature
-```
-
-Edits inside a submodule worktree do not auto-update the parent's submodule pointer; commit the pointer update in the parent separately.
-
-When working **inside** `proto-tools` — editing tools, standalone environments, or its infrastructure — follow the submodule's own repo instructions and `proto-tools/notes/` (tool environments, storage, device management, seeding, logging, error handling, testing), not this guide.
+Each fork has its own history. Create a worktree for either fork with ordinary
+`git worktree add`, then provide the tools checkout at `../diablo-tools` or install
+both chosen checkouts together using `uv pip install -e PATH_TO_TOOLS -e .`.
+For tool changes, follow that repository's own instructions and `notes/`.
 
 ## Logging
 
@@ -105,7 +59,6 @@ Exit code is `0` on pass, `1` on errors. The script's module docstring is the ca
 |---|---|---|
 | `unit-tests.yml` | non-draft PR + manual `workflow_dispatch` | `pytest --cpu-only -q --override-ini="log_cli=false" --cov --cov-report=term-missing` |
 | `checks.yml` | non-draft PR | Three parallel jobs: `ruff check` + `ruff format --check`; `mypy proto_language/`; `python .github/scripts/validate_exports.py --verbose` |
-| `submodule-check.yml` | non-draft PR | Fails when the pinned `proto-tools` SHA differs from `evo-design/proto-tools@main`; fix with `git submodule update --remote proto-tools` and commit |
 | `integration-tests.yml` | scheduled (daily 06:00 UTC) + `workflow_dispatch` | Install MAFFT; `pytest --integration --cpu-only -v`. **Not** PR-triggered |
 | `claude.yml` | `@claude` in issue/PR/review comment | Code review or scoped question response |
 

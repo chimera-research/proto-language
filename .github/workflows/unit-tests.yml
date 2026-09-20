@@ -18,8 +18,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
     - uses: astral-sh/setup-uv@v5
       with:
         version: "0.11.8"
@@ -30,6 +28,6 @@ jobs:
         python-version: "3.12"
     - name: Install dependencies
       run: |
-        uv pip install --system -e ".[dev]"
-        uv pip install --system -e ./proto-tools
+        bash scripts/bootstrap-tools.sh
+        uv pip install --system -e ../diablo-tools -e ".[dev]"
     - run: pytest --cpu-only -q --override-ini="log_cli=false" --cov --cov-report=term-missing
