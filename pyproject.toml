@@ -3,9 +3,9 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "proto-language"
+name = "diablo-language"
 version = "0.1.0"
-description = "A high level programming language for generative biology"
+description = "Diablo scientific programming language, downstream of Proto Language"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -40,7 +40,7 @@ classifiers = [
 
 # Core dependencies
 dependencies = [
-    "proto_tools @ git+https://github.com/evo-design/proto-tools.git@main",
+    "diablo-tools>=0.1.0",
 
     # Core framework
     "pydantic>=2.0",
@@ -72,10 +72,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/evo-design/proto-language"
-Repository = "https://github.com/evo-design/proto-language"
+Homepage = "https://github.com/chimera-research/proto-language"
+Repository = "https://github.com/chimera-research/proto-language"
 
 [project.scripts]
+diablo-language = "proto_language.cli:main"
 # CLI entry point; also reachable via `python -m proto_language`.
 proto-language = "proto_language.cli:main"
 
@@ -95,14 +96,14 @@ dev = [
 
 [tool.setuptools.packages.find]
 include = ["proto_language*"]
-exclude = ["tests*", "examples*", "*.tests*", "*.tests", "proto-tools*"]
+exclude = ["tests*", "examples*", "*.tests*", "*.tests"]
 
 [tool.setuptools.package-data]
 proto_language = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-norecursedirs = ["proto-tools", "*.egg", ".*", "build", "dist"]
+norecursedirs = ["*.egg", ".*", "build", "dist"]
 pythonpath = ["."]
 addopts = [
     "-ra",
@@ -172,7 +173,6 @@ exclude = [
     "build",
     "dist",
     "*.egg-info",
-    "proto-tools",
     "examples",
     "guides",
 ]
@@ -247,8 +247,6 @@ branch = true
 source = ["proto_language"]
 omit = [
     "*/tests/*",
-    # Git submodule (source already filters; defensive)
-    "proto-tools/*",
     # Constraint plugins: tool-bound, only @pytest.mark.integration tests
     "proto_language/constraint/*/*",
     # Logging stdlib wrapper: handler plumbing
@@ -260,3 +258,9 @@ fail_under = 80
 show_missing = true
 exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
 
+
+[tool.uv.sources]
+diablo-tools = { path = "../diablo-tools", editable = true }
+
+[tool.uv]
+config-settings-package = { diablo-tools = { editable_mode = "compat" }, diablo-language = { editable_mode = "compat" } }

@@ -3,14 +3,14 @@
 `proto-language` is the Proto constraint-based optimization framework for
 designing biological sequences. Core abstractions are `Sequence`, `Segment`,
 `Construct`, `Generator`, `Constraint`, `Optimizer`, and `Program`. The
-`proto-tools/` submodule supplies bioinformatics tool wrappers and has its own
+sibling `../diablo-tools/` repository supplies bioinformatics tool wrappers and has its own
 repo instructions, notes, tests, and CI.
 
 ## References
 
 - `README.md`: user-facing overview, setup, core model, and examples.
 - `notes/README.md`: index of the developer/agent/advanced-user notes (start here).
-  - `notes/dev.md`: dev workflow — setup, submodule sync, worktrees, export validation, CI.
+  - `notes/dev.md`: dev workflow — setup, independent fork setup, worktrees, export validation, CI.
   - `notes/batching.md`: batching across pools, generators, constraints, scorers, backends.
   - `notes/error-handling.md`: raise vs. worst-score contracts in evaluate/sample/run.
   - `notes/filesystem.md`: where files live and where runtime artifacts are written.
@@ -21,10 +21,10 @@ repo instructions, notes, tests, and CI.
 
 ## Development Setup
 
-Use the `proto-language` conda environment setup from `README.md`. 
+Use the Diablo Lang workspace Flox + moon + uv environment, or the editable setup in `CONTRIBUTING.md`.
 Project configurations live in `pyproject.toml`.
 
-See `notes/dev.md` for setup, submodules, export validation, and CI. See
+See `notes/dev.md` for setup, independent fork checkouts, export validation, and CI. See
 `notes/testing.md` for markers, fixtures, placement, and mocks.
 
 ## Repository Map
@@ -86,5 +86,5 @@ Skill files live in `.claude/skills/` (`.agents/skills/` symlink). Read the rele
 - `implement-constraint`, `implement-generator`, `implement-optimizer`:
   implementing or modifying framework components.
 
-The `proto-tools/` submodule has `implement-tool` and `fix-env`; read its repo
-instructions before editing that submodule.
+The sibling `../diablo-tools/` repository has `implement-tool` and `fix-env`; read its repo
+instructions before editing that repository.

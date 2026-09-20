@@ -236,7 +236,7 @@ def resolve_domain_root(domain: dict, repo_root: Path) -> Path | None:
     """Resolve the root directory for a domain.
 
     Checks the primary 'root' relative to repo_root first, then falls back
-    to 'root_search' paths (for tools submodule / sibling repo).
+    to 'root_search' paths (for the independent tools sibling repo).
     """
     primary = repo_root / domain["root"]
     if primary.is_dir():

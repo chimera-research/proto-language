@@ -9,7 +9,7 @@ behavior.
 
 ## Setup and workflow
 
-- `dev.md`: contributor dev workflow — initial setup, submodule sync, git
+- `dev.md`: contributor dev workflow — initial setup, independent fork setup, git
   worktrees, the export-chain validator, and the CI workflows that gate PRs.
 
 ## Runtime behavior and layout
@@ -39,8 +39,8 @@ writing programs, and companions to the `write-program` and `implement-*` skills
 
 ## Tools layer
 
-The `proto-tools/` submodule carries its own notes under `proto-tools/notes/`
+The independent sibling `../diablo-tools/` repository carries its own notes under `../diablo-tools/notes/`
 for tool-layer topics: storage and model weights, tool environments, device
 management, seeding, logging, error handling, and tool testing. The language
-notes above point into them where the boundary matters. Read the submodule's
-notes and repo instructions before changing behavior inside `proto-tools/`.
+notes above point into them where the boundary matters. Read the tools repository's
+notes and repo instructions before changing behavior inside `../diablo-tools/`.
