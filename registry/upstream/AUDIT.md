@@ -220,9 +220,9 @@ env: `ablang` · code license: `BSD-3-Clause` · weights license: `-` · floatin
 
 env: `alphafold2` · code license: `Apache-2.0` · weights license: `CC-BY-4.0` · floating: 6, pinned: 2
 
-- weights: `url:https://storage.googleapis.com/alphafold/alphafold_params_2022-12-06.tar` **floating** — `proto_tools/tools/binder_design/bindcraft/standalone/setup.sh:37`
+- weights: `url:https://storage.googleapis.com/alphafold/alphafold_params_2022-12-06.tar` **floating** — `proto_tools/tools/structure_prediction/alphafold2/standalone/setup.sh:56`
 - code: `git:github.com/SantiagoMille/germinal@1e1c1a5` **floating** — `proto_tools/tools/structure_prediction/alphafold2/standalone/setup.sh:16`
-- code: `git:github.com/google-deepmind/alphafold` **floating** — `proto_tools/tools/database_retrieval/alphafold_db/links.yaml`
+- code: `git:github.com/google-deepmind/alphafold` **floating** — `proto_tools/tools/structure_prediction/alphafold2/links.yaml`
 - code: `git:github.com/sokrypton/ColabDesign@5ab4efaba2321a6c3c314b82d2fff8e0241f5c2d` pinned — `proto_tools/tools/structure_prediction/alphafold2/standalone/requirements.txt:5`
 - dependencies: 4 PyPI requirements (3 not `==`-pinned)
 
@@ -333,7 +333,7 @@ env: `chai1` · code license: `Apache-2.0` · weights license: `-` · floating: 
 - weights: `url:https://chaiassets.com/chai1-inference-depencencies/esm2/traced_sdpa_esm2_t36_3B_UR50D_fp16.pt` unresolved — `proto_tools/tools/structure_prediction/chai1/standalone/setup.sh:48`
 - weights: `url:https://files.rcsb.org/download/{pdb_id}.cif.gz` unresolved (template) — `pypi:chai-lab==0.6.1!chai_lab/data/io/rcsb.py:12`
 - code: `git:github.com/chaidiscovery/chai-lab` **floating** — `proto_tools/tools/structure_prediction/chai1/links.yaml`
-- code: `pypi:chai-lab==0.6.1` pinned — `proto_tools/tools/binder_design/germinal/standalone/setup.sh:57`
+- code: `pypi:chai-lab==0.6.1` pinned — `proto_tools/tools/structure_prediction/chai1/standalone/requirements.txt:1`
 - dependencies: 2 PyPI requirements (2 not `==`-pinned)
 
 ### codonfm (masked_models)
@@ -396,7 +396,7 @@ env: `esm2` · code license: `MIT` · weights license: `-` · floating: 3, pinne
 - weights: `hf:facebook/esm2_t48_15B_UR50D` unresolved — `proto_tools/tools/masked_models/esm2/links.yaml`
 - weights: `hf:facebook/esm2_t6_8M_UR50D` unresolved — `proto_tools/tools/masked_models/esm2/links.yaml`
 - weights: `hf:fredzzp/esm2_t33_650M_UR50D` unresolved — `proto_tools/tools/masked_models/esm2/standalone/inference.py:715`
-- code: `git:github.com/facebookresearch/esm` **floating** — `proto_tools/tools/inverse_folding/esm_if1/links.yaml`
+- code: `git:github.com/facebookresearch/esm` **floating** — `proto_tools/tools/masked_models/esm2/links.yaml`
 - dependencies: 3 PyPI requirements (2 not `==`-pinned)
 
 ### esm3 (masked_models)
@@ -446,7 +446,7 @@ env: `biohub_esm` · code license: `MIT` · weights license: `MIT` · floating: 
 env: `esmfold` · code license: `MIT` · weights license: `-` · floating: 3, pinned: 1, unresolved: 1
 
 - weights: `hf:facebook/esmfold_v1` unresolved — `proto_tools/tools/structure_prediction/esmfold/standalone/inference.py:554`
-- code: `git:github.com/facebookresearch/esm` **floating** — `proto_tools/tools/inverse_folding/esm_if1/links.yaml`
+- code: `git:github.com/facebookresearch/esm` **floating** — `proto_tools/tools/structure_prediction/esmfold/links.yaml`
 - dependencies: 3 PyPI requirements (2 not `==`-pinned)
 
 ### esmfold2 (structure_prediction)
@@ -505,9 +505,9 @@ env: `foldseek` · code license: `GPL-3.0` · weights license: `-` · floating: 
 
 env: `freebindcraft` · code license: `MIT` · weights license: `CC-BY-4.0` · floating: 6, pinned: 11
 
-- weights: `url:https://storage.googleapis.com/alphafold/alphafold_params_2022-12-06.tar` **floating** — `proto_tools/tools/binder_design/bindcraft/standalone/setup.sh:37`
+- weights: `url:https://storage.googleapis.com/alphafold/alphafold_params_2022-12-06.tar` **floating** — `proto_tools/tools/binder_design/freebindcraft/standalone/setup.sh:48`
 - code: `git:github.com/cytokineking/FreeBindCraft` **floating** — `proto_tools/tools/binder_design/freebindcraft/links.yaml`
-- code: `git:github.com/sokrypton/ColabDesign@e31a56fe1d9b4de25c8697f3a28b75892941cc72` pinned — `proto_tools/tools/binder_design/bindcraft/standalone/setup.sh:20`
+- code: `git:github.com/sokrypton/ColabDesign@e31a56fe1d9b4de25c8697f3a28b75892941cc72` pinned — `proto_tools/tools/binder_design/freebindcraft/standalone/setup.sh:31`
 - dependencies: 14 PyPI requirements (4 not `==`-pinned)
 
 ### genomic_intelligence (sequence_scoring)
@@ -522,9 +522,9 @@ env: `germinal` · code license: `Apache-2.0` · weights license: `CC-BY-4.0` ·
 
 - weights: `url:https://chaiassets.com/chai1-inference-depencencies/esm2/traced_sdpa_esm2_t36_3B_UR50D_fp16.pt` unresolved — `proto_tools/tools/structure_prediction/chai1/standalone/setup.sh:48`
 - weights: `url:https://files.rcsb.org/download/{pdb_id}.cif.gz` unresolved (template) — `pypi:chai-lab==0.6.1!chai_lab/data/io/rcsb.py:12`
-- weights: `url:https://storage.googleapis.com/alphafold/alphafold_params_2022-12-06.tar` **floating** — `proto_tools/tools/binder_design/bindcraft/standalone/setup.sh:37`
+- weights: `url:https://storage.googleapis.com/alphafold/alphafold_params_2022-12-06.tar` **floating** — `proto_tools/tools/binder_design/germinal/standalone/setup.sh:90`
 - code: `git:github.com/SantiagoMille/germinal` **floating** — `proto_tools/tools/binder_design/germinal/links.yaml`
-- code: `git:github.com/outpace-bio/DAlphaBall` **floating** — `proto_tools/tools/binder_design/bindcraft/standalone/setup.sh:65`
+- code: `git:github.com/outpace-bio/DAlphaBall` **floating** — `proto_tools/tools/binder_design/germinal/standalone/setup.sh:109`
 - code: `pypi:chai-lab==0.6.1` pinned — `proto_tools/tools/binder_design/germinal/standalone/setup.sh:57`
 - dependencies: 20 PyPI requirements (18 not `==`-pinned)
 
@@ -791,7 +791,7 @@ env: `pymol_rmsd` · code license: `Custom (Open-Source PyMOL Copyright Notice)`
 env: `pyrosetta` · code license: `Custom (PyRosetta Software License)` · weights license: `-` · floating: 4
 
 - code: `git:github.com/RosettaCommons/rosetta` **floating** — `proto_tools/tools/structure_scoring/pyrosetta/links.yaml`
-- code: `git:github.com/outpace-bio/DAlphaBall` **floating** — `proto_tools/tools/binder_design/bindcraft/standalone/setup.sh:65`
+- code: `git:github.com/outpace-bio/DAlphaBall` **floating** — `proto_tools/tools/structure_scoring/pyrosetta/standalone/setup.sh:48`
 - dependencies: 2 PyPI requirements (2 not `==`-pinned)
 
 ### random_nucleotide (mutagenesis)
@@ -842,9 +842,9 @@ env: `rfdiffusion3` · code license: `BSD-3-Clause` · weights license: `-` · f
 
 env: `segmasker` · code license: `Custom (NCBI BLAST+ public domain)` · weights license: `-` · floating: 1, unresolved: 3
 
-- weights: `url:https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/2.17.0/ncbi-blast-2.17.0+-aarch64-macosx.tar.gz` unresolved — `proto_tools/tools/sequence_alignment/blast/standalone/binary_config.py:17`
-- weights: `url:https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/2.17.0/ncbi-blast-2.17.0+-x64-linux.tar.gz` unresolved — `proto_tools/tools/sequence_alignment/blast/standalone/binary_config.py:29`
-- weights: `url:https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/2.17.0/ncbi-blast-2.17.0+-x64-macosx.tar.gz` unresolved — `proto_tools/tools/sequence_alignment/blast/standalone/binary_config.py:21`
+- weights: `url:https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/2.17.0/ncbi-blast-2.17.0+-aarch64-macosx.tar.gz` unresolved — `proto_tools/tools/sequence_scoring/segmasker/standalone/binary_config.py:19`
+- weights: `url:https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/2.17.0/ncbi-blast-2.17.0+-x64-linux.tar.gz` unresolved — `proto_tools/tools/sequence_scoring/segmasker/standalone/binary_config.py:27`
+- weights: `url:https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/2.17.0/ncbi-blast-2.17.0+-x64-macosx.tar.gz` unresolved — `proto_tools/tools/sequence_scoring/segmasker/standalone/binary_config.py:23`
 - dependencies: 1 PyPI requirements (1 not `==`-pinned)
 
 ### sequence_fetch (database_retrieval)
@@ -900,7 +900,7 @@ live services (not mirrorable): https://rest.uniprot.org
 
 env: `usalign` · code license: `Custom (Zhang Lab academic-use license)` · weights license: `-` · pinned: 1
 
-- code: `git:github.com/pylelab/USalign@177cc8a2bbd3e2a6e9c5faaaa4ff5dfa1e6048f7` pinned — `proto_tools/tools/structure_alignment/tmalign/standalone/setup.sh:22`
+- code: `git:github.com/pylelab/USalign@177cc8a2bbd3e2a6e9c5faaaa4ff5dfa1e6048f7` pinned — `proto_tools/tools/structure_alignment/usalign/standalone/setup.sh:22`
 
 ### viennarna (structure_prediction)
 

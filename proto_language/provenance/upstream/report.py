@@ -116,7 +116,8 @@ def render_audit(lock: UpstreamLock, max_rows_per_toolkit: int = 8) -> str:
             :max_rows_per_toolkit
         ]
         for src in shown:
-            where = src.found_in[0] if src.found_in else "-"
+            own = [loc for loc in src.found_in if f"/{name}/" in loc]
+            where = (own or src.found_in or ["-"])[0]
             lines.append(f"- {src.role}: {_cell(src)} — `{where}`")
         deps = [s for s in srcs if s.role == "dependency"]
         if deps:

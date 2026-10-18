@@ -104,7 +104,7 @@ Summary of the workflow:
 | `config` | `Type[BaseModel]` | Yes | Pydantic config class |
 | `description` | `str` | Yes | What this generator does |
 | `uses_gpu` | `bool` | No | Whether generator requires GPU |
-| `tools_called` | `List[str]` | No | Default `[]` |
+| `tools_called` | `List[str]` | No | Default `[]`. Every proto-tools key the generator invokes; registry releases version the generator on these edges (`notes/registry.md`) |
 | `supported_sequence_types` | `List[str]` | No | Default `[]` (= all types). Options: `"dna"`, `"rna"`, `"protein"`. Ligand segments are immutable fixed targets — `Generator.assign()` rejects them, so do not list `"ligand"` here. |
 
 `category` is **not** a decorator argument — it's auto-derived from the class's `input_type` classvar via `INPUT_TYPE_TO_CATEGORY` in `generator_registry.py`.

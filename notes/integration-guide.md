@@ -9,12 +9,9 @@ in **proto-language** as a generator / constraint / optimizer, use it in a
 > This guide teaches the path and inlines the load-bearing contracts. Canonical,
 > always-current detail lives in the linked skills and notes. **When this guide
 > and a linked source disagree, the source code wins** — and this guide must be
-> updated in the same PR that changes the behavior.
->
-> The two forward references below are being built in parallel and do not exist
-> yet in full: the `python -m proto_language.provenance` CLI verbs, and the notes
-> [`notes/registry.md`](registry.md) and [`notes/upstream-control.md`](upstream-control.md).
-> Everything else here is grounded in current source.
+> updated in the same PR that changes the behavior. Publication and upstream
+> pinning are covered in [`notes/registry.md`](registry.md) and
+> [`notes/upstream-control.md`](upstream-control.md).
 
 ---
 
@@ -279,7 +276,7 @@ Integrators must pin every upstream source so a release lock captures exactly wh
 - **git**: exact commit SHAs, never branches.
 - **weights**: explicit HF `revision=<commit-sha>`, or a download URL with a stable digest — never a floating `main`.
 
-Then declare those sources so they are captured by the upstream lock. **See [`notes/upstream-control.md`](upstream-control.md) for the declaration format and the `python -m proto_language.provenance upstream discover`/`resolve` workflow.** Each toolkit gets one entry in `registry/upstream/declarations.yaml`.
+Discovery finds most sources automatically (`links.yaml`, `requirements.txt`, `setup.sh` clones and downloads, Hugging Face ids and weight URLs in your Python, and — one level down — weights your upstream package fetches internally). Run `python -m proto_language.provenance upstream discover --toolkit {toolkit}` and check the list is complete. Anything it cannot see (a weight URL built at run time, a live API) goes in `registry/upstream/declarations.yaml`; then regenerate the lock with `upstream resolve`. See [`notes/upstream-control.md`](upstream-control.md).
 
 ### Tests + markers + style suite
 
@@ -291,7 +288,7 @@ Then declare those sources so they are captured by the upstream lock. **See [`no
 
 ## 4. Step 2 — Expose it in proto-language
 
-Each component is a registered class/function with a `BaseConfig` config and a decorator. The decorator's `tools_called=[...]` is the **dependency edge**: it must list **every proto-tools key the component invokes**. The registry uses it to version components — when a tool changes, every component that lists it (and every program using them) re-versions. Keep it exact and complete.
+Each component is a registered class/function with a `BaseConfig` config and a decorator. The decorator's `tools_called=[...]` is the **dependency edge**: it must list **every proto-tools key the component invokes**. The registry uses it to version components — when a tool changes, every component that depends on it (and every program using them) re-versions. The release build also adds an edge for any tool whose `run_*`/Input/Config the component's code imports, as a safety net, and lists those in the lock's `edge_audit`; declaring them yourself keeps the metadata honest.
 
 Skills: [`implement-constraint`](../.claude/skills/implement-constraint/SKILL.md), [`implement-generator`](../.claude/skills/implement-generator/SKILL.md) (+ `TEMPLATES.md`), [`implement-optimizer`](../.claude/skills/implement-optimizer/SKILL.md) (+ `TEMPLATES.md`). Config classes inherit the local `BaseConfig` and use `ConfigField` (`from proto_language.utils.base import BaseConfig, ConfigField`).
 
@@ -516,7 +513,7 @@ python -m proto_language.provenance upstream discover                # static sc
 python -m proto_language.provenance upstream resolve                 # pin them into registry/upstream/upstream.lock.json
 ```
 
-Curated upstream declarations live in `registry/upstream/declarations.yaml` (one entry per toolkit); see [`notes/upstream-control.md`](upstream-control.md).
+Curated corrections to upstream discovery live in `registry/upstream/declarations.yaml`; the generated audit is `registry/upstream/AUDIT.md`. See [`notes/upstream-control.md`](upstream-control.md).
 
 ---
 
@@ -531,7 +528,7 @@ Curated upstream declarations live in `registry/upstream/declarations.yaml` (one
 - [ ] `standalone/` (if any): no `proto_tools` imports; `get_logger` in every `.py`; `to_device`/`get_memory_stats`; `python_version.txt` present; weights via `resolve_weights_dir`/HF.
 - [ ] `cite.bib`, `license.yaml`, `links.yaml`, `README.md` (4 H2s), `examples/example.ipynb` (correct kernelspec) all present and verified.
 - [ ] All upstream pins exact (`==`, commit SHAs, weight `revision=`).
-- [ ] **Toolkit has an entry in `registry/upstream/declarations.yaml` with every code/weights source pinned (no floating refs).**
+- [ ] **`upstream resolve` lists every code/weights source the toolkit pulls (add misses to `registry/upstream/declarations.yaml`), and none of the toolkit's weights show as floating in `registry/upstream/AUDIT.md`.**
 - [ ] Export chain updated at all 4 levels (`__all__` sorted).
 - [ ] `tests/style_consistency_tests/` green; tool tests green; example notebook executes.
 
@@ -545,7 +542,7 @@ Curated upstream declarations live in `registry/upstream/declarations.yaml` (one
 **Both repos / release:**
 - [ ] `ruff check`, `ruff format --check`, `mypy`, `pytest --cpu-only`, `validate_exports.py` all green in each repo.
 - [ ] Submodule pointer bumped to the merged proto-tools SHA.
-- [ ] **`python -m proto_language.provenance build` succeeds with no edge-audit warnings for your component (`tools_called` matches the `run_*` functions it imports).**
+- [ ] **`python -m proto_language.provenance build` succeeds, and your component does not appear in the lock's `edge_audit` (every tool it imports is declared in `tools_called`).**
 
 ---
 
@@ -559,7 +556,7 @@ Curated upstream declarations live in `registry/upstream/declarations.yaml` (one
 6. **`# type: ignore` needs an error code** (mypy strict, both repos); prefer `assert` narrowing over `cast()`/`Protocol`/`TYPE_CHECKING`.
 7. **Standalone can't import `proto_tools`.** `from proto_tools...` or `from standalone_helpers import get_subprocess_device_env`-style mistakes fail at runtime; use the published `standalone_helpers` surface only.
 8. **Iterable cardinality violations.** Flattening N samples per input breaks per-item cache stitching and dedup; bundle N in a per-input wrapper and keep `iterable_output_field` 1:1 with the primary input.
-9. **`tools_called` drift.** Missing or stale keys break registry versioning — the provenance edge audit warns when `tools_called` doesn't match the imported `run_*` functions. Keep it exact.
+9. **`tools_called` drift.** A tool called through a dispatcher (e.g. `predict_structures`) is invisible to the import-based safety net, so a missing key there means a tool upgrade will not re-version your component. Keep `tools_called` exact.
 10. **Wrong `stochastic` flag.** Setting it on a deterministic tool makes seeded calls skip per-item cache and dedup for no reason; omitting it on a sampler makes duplicate iterable items collapse. Flag iff `config.seed` changes the output.
 11. **`category` is not a generator decorator arg.** It is derived from the generator's `input_type` classvar; passing it is wrong. (Constraints *do* take `category`.)
 12. **Reusing components across stages / copying constructs.** Generators and constraints can't be reused across optimizer stages (create fresh ones); multi-stage programs must share the **same construct objects by identity** or state won't flow.
@@ -594,5 +591,5 @@ Curated upstream declarations live in `registry/upstream/declarations.yaml` (one
 | Where files live / package layout | [`notes/filesystem.md`](filesystem.md) |
 | Dev workflow, submodule, export validator, CI | [`notes/dev.md`](dev.md) |
 | Component tests / markers / mocks | [`notes/testing.md`](testing.md) |
-| Registry release / publication | [`notes/registry.md`](registry.md) *(forthcoming)* |
-| Upstream declarations / provenance workflow | [`notes/upstream-control.md`](upstream-control.md) *(forthcoming)* |
+| Registry release / publication | [`notes/registry.md`](registry.md) |
+| Upstream declarations / provenance workflow | [`notes/upstream-control.md`](upstream-control.md) |

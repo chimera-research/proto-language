@@ -90,6 +90,12 @@ dev = [
     "ruff==0.15.12",
     "mypy==1.20.2",
     "types-tqdm",           # mypy stubs for tqdm (used by bar-aware logging)
+    "types-PyYAML",         # mypy stubs for yaml (used by proto_language.provenance)
+    "psycopg[binary]>=3.1", # registry publish tests and mypy coverage of proto_language.provenance
+]
+# Publishing releases to the Postgres registry (python -m proto_language.provenance publish)
+registry = [
+    "psycopg[binary]>=3.1",
 ]
 
 
@@ -98,7 +104,7 @@ include = ["proto_language*"]
 exclude = ["tests*", "examples*", "*.tests*", "*.tests", "proto-tools*"]
 
 [tool.setuptools.package-data]
-proto_language = ["py.typed"]
+proto_language = ["py.typed", "provenance/sql/*.sql"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

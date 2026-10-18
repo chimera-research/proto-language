@@ -159,7 +159,7 @@ def fetch_release_index(dsn: str, ref: str) -> dict[tuple[str, str], tuple[str, 
 
     Returns:
         dict[tuple[str, str], tuple[str, str]]: ``(kind, key)`` to ``(digest, local_digest)``;
-        empty when nothing is published under ``ref``.
+            empty when nothing is published under ``ref``.
     """
     with _connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(

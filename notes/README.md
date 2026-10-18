@@ -7,6 +7,21 @@ canonical source for one area: start here to find where a topic is covered, then
 read the source, docstrings, and tests for the final word on signatures and
 behavior.
 
+## Start here to integrate a model
+
+- `integration-guide.md`: the single end-to-end path for integrating any new
+  model (generative, predictive, classical binary, remote API): proto-tools tool →
+  proto-language generator/constraint/optimizer → program → registry release.
+
+## Registry, provenance, and upstream control
+
+- `registry.md`: how tools, components, and programs become immutable,
+  content-addressed releases in Postgres (TigerData); SQL schemas and tables; CI
+  publication; run lineage.
+- `upstream-control.md`: discovering, pinning, and mirroring the upstream code and
+  weights every toolkit pulls; the roadmap to running and training entirely from
+  our own repos and data layer.
+
 ## Setup and workflow
 
 - `dev.md`: contributor dev workflow — initial setup, submodule sync, git

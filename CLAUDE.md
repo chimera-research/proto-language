@@ -10,6 +10,10 @@ repo instructions, notes, tests, and CI.
 
 - `README.md`: user-facing overview, setup, core model, and examples.
 - `notes/README.md`: index of the developer/agent/advanced-user notes (start here).
+  - `notes/integration-guide.md`: end-to-end path for integrating a new model
+    (tool → generator/constraint/optimizer → program → registry release).
+  - `notes/registry.md`: immutable registry releases in Postgres, CI publication, run lineage.
+  - `notes/upstream-control.md`: pinning and mirroring upstream code and weights per toolkit.
   - `notes/dev.md`: dev workflow — setup, submodule sync, worktrees, export validation, CI.
   - `notes/batching.md`: batching across pools, generators, constraints, scorers, backends.
   - `notes/error-handling.md`: raise vs. worst-score contracts in evaluate/sample/run.
@@ -37,6 +41,11 @@ See `notes/dev.md` for setup, submodules, export validation, and CI. See
   providers.
 - `proto_language/utils/`: shared config, serialization, scoring, IO, logging,
   gradients, and scheduling helpers.
+- `proto_language/provenance/`: registry release locks, Postgres publishing,
+  run lineage, and upstream discovery/resolution/mirroring
+  (`python -m proto_language.provenance`).
+- `registry/`: release config and the committed upstream lock, audit, and
+  declarations.
 - `tests/language_tests/`: core, constraint, generator, and optimizer behavior
   tests.
 - `tests/utils_tests/` and `tests/tests_cpu/`: utility tests and CPU integration
@@ -68,6 +77,8 @@ See `notes/dev.md` for setup, submodules, export validation, and CI. See
 - Program-level seeds own run determinism and derive downstream seeds.
 - Multi-stage programs reuse the same construct objects by identity across
   optimizers.
+- `tools_called` must list every proto-tools key a component invokes: it is the
+  dependency edge registry releases version on.
 
 ## Documentation
 

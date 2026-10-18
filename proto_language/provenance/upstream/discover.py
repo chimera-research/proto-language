@@ -142,7 +142,7 @@ def iter_toolkits(proto_tools_root: Path) -> Iterator[tuple[str, str, Path]]:
         proto_tools_root (Path): proto-tools checkout root (contains ``proto_tools/``).
 
     Yields:
-        tuple[str, str, Path]: Category name, toolkit name, toolkit directory.
+        Iterator[tuple[str, str, Path]]: Category name, toolkit name, toolkit directory.
     """
     tools_dir = proto_tools_root / "proto_tools" / "tools"
     for category_dir in sorted(p for p in tools_dir.iterdir() if p.is_dir() and not p.name.startswith(("_", "."))):

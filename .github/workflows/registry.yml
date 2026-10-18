@@ -1,0 +1,92 @@
+name: Registry
+
+# Builds the release lock on every PR (and shows what it would change), and
+# publishes an immutable release to the Postgres registry from main and from
+# GitHub releases. See notes/registry.md.
+#
+# Secrets (Settings -> Secrets and variables -> Actions, on the `registry` environment):
+#   REGISTRY_DATABASE_URL   login role granted registry_publisher (push/release only)
+#   REGISTRY_READ_URL       login role granted registry_reader (PR diff summary; optional)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  # PRs cancel superseded runs; publishes queue so releases land in commit order.
+  group: registry-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'publish' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  registry:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    name: Build lock${{ github.event_name != 'pull_request' && ' and publish' || '' }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name != 'pull_request' && 'registry' || '' }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - uses: astral-sh/setup-uv@v5
+      with:
+        version: "0.11.8"
+        enable-cache: true
+        cache-dependency-glob: "**/pyproject.toml"
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install dependencies
+      run: |
+        uv pip install --system -e ".[dev,registry]"
+        uv pip install --system -e ./proto-tools
+
+    - name: Upstream lock covers every discovered source
+      run: python -m proto_language.provenance upstream resolve --check
+
+    - name: Build release lock
+      run: python -m proto_language.provenance build --out registry.lock.json
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: registry-lock-${{ github.sha }}
+        path: registry.lock.json
+        retention-days: 30
+
+    - name: Summarize changes against the published main release
+      if: github.event_name == 'pull_request'
+      env:
+        REGISTRY_DATABASE_URL: ${{ secrets.REGISTRY_READ_URL }}
+      run: |
+        {
+          echo "## Registry changes vs. main"
+          if [ -n "$REGISTRY_DATABASE_URL" ]; then
+            python -m proto_language.provenance diff registry.lock.json --against main --markdown
+          else
+            echo "_REGISTRY_READ_URL not configured; skipping diff._"
+          fi
+          echo
+          echo "### Edge audit"
+          python -c "import json; [print('-', e) for e in json.load(open('registry.lock.json'))['edge_audit']] or None"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Publish release
+      id: publish
+      if: github.event_name != 'pull_request'
+      env:
+        REGISTRY_DATABASE_URL: ${{ secrets.REGISTRY_DATABASE_URL }}
+      run: |
+        python -m proto_language.provenance publish \
+          --lock registry.lock.json \
+          --channel "${{ github.event_name == 'release' && 'stable' || 'main' }}" \
+          --ci-run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+    - name: Verify stored release re-hashes
+      if: github.event_name != 'pull_request'
+      env:
+        REGISTRY_DATABASE_URL: ${{ secrets.REGISTRY_DATABASE_URL }}
+      run: python -m proto_language.provenance verify --release "${{ steps.publish.outputs.release_id }}"

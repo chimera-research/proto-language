@@ -107,6 +107,8 @@ Exit code is `0` on pass, `1` on errors. The script's module docstring is the ca
 | `checks.yml` | non-draft PR | Three parallel jobs: `ruff check` + `ruff format --check`; `mypy proto_language/`; `python .github/scripts/validate_exports.py --verbose` |
 | `submodule-check.yml` | non-draft PR | Fails when the pinned `proto-tools` SHA differs from `evo-design/proto-tools@main`; fix with `git submodule update --remote proto-tools` and commit |
 | `integration-tests.yml` | scheduled (daily 06:00 UTC) + `workflow_dispatch` | Install MAFFT; `pytest --integration --cpu-only -v`. **Not** PR-triggered |
+| `registry.yml` | non-draft PR, push to `main`, GitHub release | `upstream resolve --check`; `provenance build`; PR: diff vs. published `main` in the job summary; `main`/release: `publish` + `verify` (see `notes/registry.md`) |
+| `upstream.yml` | weekly (Mon 07:17 UTC) + `workflow_dispatch` | Re-resolves `registry/upstream/` with network and opens a PR on changes; optional mirroring (see `notes/upstream-control.md`) |
 | `claude.yml` | `@claude` in issue/PR/review comment | Code review or scoped question response |
 
 See `notes/testing.md` for the test-side details (markers, fixtures, mocks) that these workflows exercise.

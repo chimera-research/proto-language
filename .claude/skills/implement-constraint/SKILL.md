@@ -107,7 +107,7 @@ class MyConstraintConfig(BaseConfig):
     config=MyConstraintConfig,                    # Config class from Step 1
     description="Evaluates sequences for ...",    # UI description
     uses_gpu=False,                               # True if calls GPU tools
-    tools_called=[],                              # e.g. ["esmfold", "segmasker"]
+    tools_called=[],                              # every tool key called, e.g. ["esmfold-prediction"]
     category="sequence_composition",              # Must match directory name
     supported_sequence_types=["dna", "rna"],      # MUST be non-empty
 )
@@ -156,7 +156,7 @@ def my_constraint(
 | `config` | `type[BaseModel]` | Yes | Pydantic config class |
 | `description` | `str` | Yes | What this constraint evaluates |
 | `uses_gpu` | `bool` | No | Default `False`. Set `True` if calling GPU tools |
-| `tools_called` | `list[str]` | No | Default `[]`. Tool names this constraint invokes |
+| `tools_called` | `list[str]` | No | Default `[]`. Every proto-tools key this constraint invokes. Registry releases version the constraint on these edges (`notes/registry.md`), so list dispatcher targets too |
 | `category` | `str` | No | Must match the subdirectory name (e.g., `"sequence_composition"`) |
 | `supported_sequence_types` | `list[str]` | Yes | Non-empty list from: `"dna"`, `"rna"`, `"protein"`, `"ligand"` |
 | `input_labels` | `list[str \| InputSlot] \| None` | No | Default `["Sequence"]`. Strings for plain labels (`["Query", "Reference"]`), or `InputSlot(label=..., requires_logits=True, requires_structure=True)` for per-slot swap-detection. Use `None` for any number of interchangeable inputs |

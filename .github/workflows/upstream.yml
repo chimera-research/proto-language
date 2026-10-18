@@ -1,0 +1,93 @@
+name: Upstream Lock
+
+# Re-resolves registry/upstream/upstream.lock.json (and AUDIT.md) against the
+# live upstream hosts and opens a PR when anything moved: a new source after a
+# proto-tools bump, a branch that advanced, a re-uploaded weights file.
+# Optionally mirrors code and weights into our infrastructure. See
+# notes/upstream-control.md.
+#
+# Secrets:
+#   HF_TOKEN                   read token, so gated Hugging Face repos resolve
+#   UPSTREAM_MIRROR_TOKEN      token that can push to the upstream mirror repos (mirror only)
+#   UPSTREAM_MIRROR_AWS_ROLE   IAM role ARN with write access to the CAS bucket (mirror only)
+
+on:
+  schedule:
+    - cron: '17 7 * * 1'  # Mondays 07:17 UTC
+  workflow_dispatch:
+    inputs:
+      mirror:
+        description: "Also mirror code and weights (writes to the CAS and mirror repos)"
+        type: boolean
+        default: false
+      toolkit:
+        description: "Limit mirroring to one toolkit (blank = all)"
+        type: string
+        default: ""
+
+concurrency:
+  group: upstream-lock
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write   # AWS OIDC for the CAS bucket
+
+jobs:
+  resolve:
+    name: Resolve upstream lock
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - uses: astral-sh/setup-uv@v5
+      with:
+        version: "0.11.8"
+        enable-cache: true
+        cache-dependency-glob: "**/pyproject.toml"
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install dependencies
+      run: |
+        uv pip install --system -e ".[dev]"
+        uv pip install --system -e ./proto-tools
+
+    - name: Resolve (with recursive scan of upstream code)
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      run: python -m proto_language.provenance upstream resolve
+
+    - name: Configure AWS credentials
+      if: inputs.mirror
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.UPSTREAM_MIRROR_AWS_ROLE }}
+        aws-region: us-east-1
+
+    - name: Mirror code and weights
+      if: inputs.mirror
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        MIRROR_TOKEN: ${{ secrets.UPSTREAM_MIRROR_TOKEN }}
+      run: |
+        python -m proto_language.provenance upstream mirror --execute \
+          ${{ inputs.toolkit != '' && format('--toolkit {0}', inputs.toolkit) || '' }} \
+          --git-remote-template "https://x-access-token:${MIRROR_TOKEN}@github.com/chimera-research/upstream--{owner}--{repo}.git"
+
+    - name: Open PR with the refreshed lock
+      uses: peter-evans/create-pull-request@v7
+      with:
+        branch: chore/upstream-lock
+        commit-message: "Refresh upstream lock"
+        title: "Refresh upstream lock"
+        add-paths: |
+          registry/upstream/upstream.lock.json
+          registry/upstream/AUDIT.md
+        body: |
+          Automated refresh of `registry/upstream/upstream.lock.json` and `AUDIT.md`
+          by the Upstream Lock workflow. Review AUDIT.md for newly floating or
+          missing sources before merging. See notes/upstream-control.md.

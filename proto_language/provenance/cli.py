@@ -61,7 +61,7 @@ def diff_locks(before: DigestIndex, after: DigestIndex) -> dict[str, list[str]]:
 
     Returns:
         dict[str, list[str]]: ``added``, ``removed``, ``changed`` (own content moved), and
-        ``reversioned`` (only a dependency moved) entries as ``kind:key``.
+            ``reversioned`` (only a dependency moved) entries as ``kind:key``.
     """
     out: dict[str, list[str]] = {"added": [], "removed": [], "changed": [], "reversioned": []}
     for ident in sorted(after.keys() - before.keys()):
@@ -204,7 +204,13 @@ def _cmd_upstream_resolve(args: argparse.Namespace) -> int:
             logger.error("No committed upstream lock at %s", out)
             return 1
         added = sorted(set(lock.sources) - set(previous.sources))
-        removed = sorted(set(previous.sources) - set(lock.sources))
+        # Sources found by the recursive scan (``pkg!path`` evidence) or declared by hand are
+        # not visible to static discovery, so only flag removals discovery itself could see.
+        removed = sorted(
+            sid
+            for sid in set(previous.sources) - set(lock.sources)
+            if not all("!" in loc or "declarations.yaml" in loc for loc in previous.sources[sid].found_in)
+        )
         for sid in added:
             logger.error("new upstream source not in lock: %s", sid)
         for sid in removed:
