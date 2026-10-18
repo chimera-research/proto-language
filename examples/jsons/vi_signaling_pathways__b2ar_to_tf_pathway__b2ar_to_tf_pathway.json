@@ -294,9 +294,7 @@
               "num_mutations": 103,
               "mask_fraction": null,
               "fixed_positions": null,
-              "temperature": 1.0,
-              "model_name": null,
-              "model_checkpoint": null
+              "temperature": 1.0
             },
             "batch_size": 1
           }
@@ -315,9 +313,7 @@
               "num_mutations": 98,
               "mask_fraction": null,
               "fixed_positions": null,
-              "temperature": 1.0,
-              "model_name": null,
-              "model_checkpoint": null
+              "temperature": 1.0
             },
             "batch_size": 1
           }
@@ -336,9 +332,7 @@
               "num_mutations": 85,
               "mask_fraction": null,
               "fixed_positions": null,
-              "temperature": 1.0,
-              "model_name": null,
-              "model_checkpoint": null
+              "temperature": 1.0
             },
             "batch_size": 1
           }
@@ -357,9 +351,7 @@
               "num_mutations": 17,
               "mask_fraction": null,
               "fixed_positions": null,
-              "temperature": 1.0,
-              "model_name": null,
-              "model_checkpoint": null
+              "temperature": 1.0
             },
             "batch_size": 1
           }
@@ -379,9 +371,7 @@
               "num_mutations": 87,
               "mask_fraction": null,
               "fixed_positions": null,
-              "temperature": 1.0,
-              "model_name": null,
-              "model_checkpoint": null
+              "temperature": 1.0
             },
             "batch_size": 1
           }
@@ -401,9 +391,7 @@
               "num_mutations": 95,
               "mask_fraction": null,
               "fixed_positions": null,
-              "temperature": 1.0,
-              "model_name": null,
-              "model_checkpoint": null
+              "temperature": 1.0
             },
             "batch_size": 1
           }
@@ -423,9 +411,7 @@
               "num_mutations": 81,
               "mask_fraction": null,
               "fixed_positions": null,
-              "temperature": 1.0,
-              "model_name": null,
-              "model_checkpoint": null
+              "temperature": 1.0
             },
             "batch_size": 1
           }

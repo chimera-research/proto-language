@@ -1,0 +1,22 @@
+# Registry release configuration. See notes/registry.md.
+#
+# programs: repo-relative globs of declarative program JSON files published as
+#   `program` artifacts. Each file's "name" is its registry key.
+programs:
+  - examples/jsons/*.json
+
+# Fail the build when a program references an unknown component key or an
+# invalid component config. Keep true: a published program must be runnable.
+strict_programs: true
+
+# Fail the build when any non-dependency upstream source (code, weights, data,
+# binary) is not pinned. Off while the upstream audit backlog is worked down;
+# flip to true once registry/upstream/AUDIT.md has no floating weights.
+require_pinned_upstream: false
+
+# Where `provenance upstream mirror` copies upstream code and weights.
+mirror:
+  # One mirror repository per upstream repository, all refs pushed.
+  git_remote_template: "git@github.com:chimera-research/upstream--{owner}--{repo}.git"
+  # Content-addressed blob store for weights, binaries, and wheels.
+  blob_store: "s3://chimera-upstream-cas"

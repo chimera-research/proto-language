@@ -108,3 +108,4 @@ cython_debug/
 
 # Worktrees
 .claude/worktrees/
+registry.lock.json

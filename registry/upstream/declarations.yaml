@@ -1,0 +1,56 @@
+# Curated upstream declarations: the human-owned correction layer over discovery.
+#
+# `python -m proto_language.provenance upstream resolve` runs static discovery
+# over every proto-tools toolkit, recurses one level into primary upstream
+# packages, then applies this file before resolving. See notes/upstream-control.md.
+#
+# Per toolkit (key = toolkit directory name under proto_tools/tools/<category>/):
+#   add:       sources discovery cannot see, or exact pins that replace a floating
+#              sighting of the same base id (hf:org/model@<sha> replaces hf:org/model).
+#              fields: type (git|pypi|hf-model|hf-dataset|url), locator, ref, role,
+#                      sha256 (url only), notes
+#   ignore:    discovered source ids that are false positives (docs, examples).
+#   services:  live remote services called at run time. They cannot be mirrored, so
+#              runs using these toolkits are reproducible only up to the service's
+#              own versioning. Record them so lineage is honest about it.
+#   notes:     free text for reviewers.
+#
+# Pinning example (fill in real SHAs from the Hub, then mirror):
+#   boltz2:
+#     add:
+#       - type: hf-model
+#         locator: boltz-community/boltz-2
+#         ref: <40-hex commit>
+#         notes: downloaded by boltz.main at first run
+
+toolkits:
+  alphafold_db:
+    services: [https://alphafold.ebi.ac.uk]
+  alphamissense_db:
+    services: [https://alphafold.ebi.ac.uk]
+  ccd_lookup:
+    services: [https://www.ebi.ac.uk, https://search.rcsb.org]
+  ensembl:
+    services: [https://rest.ensembl.org, https://grch37.rest.ensembl.org]
+  interproscan:
+    services: [https://www.ebi.ac.uk]
+  ncbi:
+    services: [https://eutils.ncbi.nlm.nih.gov]
+  pdb:
+    services: [https://data.rcsb.org, https://www.rcsb.org]
+  pubchem:
+    services: [https://pubchem.ncbi.nlm.nih.gov]
+  rfam:
+    services: [https://rfam.org]
+  sequence_fetch:
+    services: [https://www.rcsb.org]
+  uniprot:
+    services: [https://rest.uniprot.org]
+  genomic_intelligence:
+    services: [https://api.genomicintelligence.ai]
+  boltz2:
+    notes: >-
+      proto-tools pins boltz==2.2.1 but not its weights. The recursive scan shows the
+      boltz package itself downloads checkpoints (model-gateway.boltz.bio *.ckpt, a Dropbox
+      ligand-regression .pkl) and references boltz-community HF repos. Mirror these and
+      record their SHA-256 before treating Boltz-2 runs as reproducible.
