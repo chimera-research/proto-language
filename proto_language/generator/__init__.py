@@ -35,6 +35,10 @@ from proto_language.generator.semigreedy_mutation_generator import (
     SemigreedyMutationGenerator,
     SemigreedyMutationGeneratorConfig,
 )
+from proto_language.generator.synflownet_generator import (
+    SynFlowNetGenerator,
+    SynFlowNetGeneratorConfig,
+)
 from proto_language.utils.sequence_matrices import SequenceLogitBiasConfig
 
 __all__ = [
@@ -85,4 +89,7 @@ __all__ = [
     # Binder design generators
     "RFdiffusionMPNNBinderGenerator",
     "RFdiffusionMPNNBinderGeneratorConfig",
+    # Molecular generation (ligand) generators
+    "SynFlowNetGenerator",
+    "SynFlowNetGeneratorConfig",
 ]

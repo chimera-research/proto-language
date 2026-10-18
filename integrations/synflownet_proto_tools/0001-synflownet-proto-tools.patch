@@ -1,0 +1,1700 @@
+From c2ac29d04e9ac38acc3963b27d906db7cb9fb780 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 18 Oct 2026 23:27:51 +0000
+Subject: [PATCH] feat: add SynFlowNet synthesizable-molecule generation tool
+
+Add a new `molecular_generation` tool category with the `synflownet` toolkit,
+wrapping SynFlowNet (a GFlowNet over a synthesis action space) as the
+`synflownet-sample` tool: Input/Config/Output/Metrics, standalone inference
+env (user-provisioned checkpoint via the ASSET_NOT_AVAILABLE pattern, since
+SynFlowNet ships no public weights), README/cite.bib/license.yaml/links.yaml,
+example notebook, tests (incl. a device-agnostic benchmark), and the full
+export chain. Also add the Modal deployment (service + manifest wiring +
+regenerated tool_map) and list the category in the README catalog.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01AfRBurRbmQ6WtVNziVX6C1
+---
+ README.md                                     |   2 +
+ proto_tools/modal/manifest.py                 |   4 +
+ .../synflownet_deployment/README.md           |  20 +
+ .../synflownet_service.py                     |  95 ++++
+ proto_tools/modal/tool_map.py                 |   1 +
+ proto_tools/tools/__init__.py                 |  21 +
+ .../tools/molecular_generation/__init__.py    |  23 +
+ .../molecular_generation/synflownet/README.md |  52 ++
+ .../synflownet/__init__.py                    |  23 +
+ .../molecular_generation/synflownet/cite.bib  |   9 +
+ .../synflownet/examples/example.ipynb         | 188 +++++++
+ .../synflownet/license.yaml                   |   8 +
+ .../synflownet/links.yaml                     |   7 +
+ .../synflownet/standalone/inference.py        | 301 ++++++++++++
+ .../synflownet/standalone/python_version.txt  |   1 +
+ .../synflownet/standalone/requirements.txt    |   7 +
+ .../synflownet/standalone/setup.sh            |  52 ++
+ .../synflownet/synflownet_sample.py           | 458 ++++++++++++++++++
+ tests/molecular_generation_tests/__init__.py  |   0
+ .../test_synflownet_sample.py                 | 205 ++++++++
+ 20 files changed, 1477 insertions(+)
+ create mode 100644 proto_tools/modal/molecular_generation/synflownet_deployment/README.md
+ create mode 100644 proto_tools/modal/molecular_generation/synflownet_deployment/synflownet_service.py
+ create mode 100644 proto_tools/tools/molecular_generation/__init__.py
+ create mode 100644 proto_tools/tools/molecular_generation/synflownet/README.md
+ create mode 100644 proto_tools/tools/molecular_generation/synflownet/__init__.py
+ create mode 100644 proto_tools/tools/molecular_generation/synflownet/cite.bib
+ create mode 100644 proto_tools/tools/molecular_generation/synflownet/examples/example.ipynb
+ create mode 100644 proto_tools/tools/molecular_generation/synflownet/license.yaml
+ create mode 100644 proto_tools/tools/molecular_generation/synflownet/links.yaml
+ create mode 100644 proto_tools/tools/molecular_generation/synflownet/standalone/inference.py
+ create mode 100644 proto_tools/tools/molecular_generation/synflownet/standalone/python_version.txt
+ create mode 100644 proto_tools/tools/molecular_generation/synflownet/standalone/requirements.txt
+ create mode 100644 proto_tools/tools/molecular_generation/synflownet/standalone/setup.sh
+ create mode 100644 proto_tools/tools/molecular_generation/synflownet/synflownet_sample.py
+ create mode 100644 tests/molecular_generation_tests/__init__.py
+ create mode 100644 tests/molecular_generation_tests/test_synflownet_sample.py
+
+diff --git a/README.md b/README.md
+index f5c3b109..087fdadf 100644
+--- a/README.md
++++ b/README.md
+@@ -127,6 +127,8 @@ for instructions related to account setup, deploying a tool, and costs, or the [
+ └── <a href="proto_tools/tools/masked_models/minerva/">minerva/</a>
+ <a href="proto_tools/tools/molecular_docking/">molecular_docking/</a>              # Protein-ligand binding pose prediction
+ └── <a href="proto_tools/tools/molecular_docking/vina/">vina/</a>
++<a href="proto_tools/tools/molecular_generation/">molecular_generation/</a>           # De novo small-molecule (ligand) generation
++└── <a href="proto_tools/tools/molecular_generation/synflownet/">synflownet/</a>
+ <a href="proto_tools/tools/mutagenesis/">mutagenesis/</a>                    # Random sequence mutagenesis
+ ├── <a href="proto_tools/tools/mutagenesis/random_nucleotide/">random_nucleotide/</a>
+ └── <a href="proto_tools/tools/mutagenesis/random_protein/">random_protein/</a>
+diff --git a/proto_tools/modal/manifest.py b/proto_tools/modal/manifest.py
+index 47b78409..cbdc294a 100644
+--- a/proto_tools/modal/manifest.py
++++ b/proto_tools/modal/manifest.py
+@@ -48,6 +48,7 @@ APP_BUCKETS: dict[str, list[str]] = {
+     "proto-tools-splice-transformer": ["SpliceTransformerService"],
+     "proto-tools-spliceai": ["SpliceAIService"],
+     "proto-tools-spliceai2": ["SpliceAI2Service"],
++    "proto-tools-synflownet": ["SynFlowNetService"],
+     # CPU services — one app each, so deploying one does not build the others.
+     "proto-tools-ccd-lookup": ["CcdLookupService"],
+     "proto-tools-crispr-tracr-rna": ["CrisprTracrRNAService"],
+@@ -174,6 +175,7 @@ SERVICE_TIERS: dict[str, str] = {
+     "SpliceAIService": "long",
+     "SpliceAI2Service": "long",
+     "SpliceTransformerService": "medium",
++    "SynFlowNetService": "extended",
+     "StructureMetricsService": "fast",
+     "TMalignService": "fast",
+     "USalignService": "fast",
+@@ -271,6 +273,7 @@ GPU_SERVICES: frozenset[str] = frozenset(
+         "SpliceAIService",
+         "SpliceAI2Service",
+         "SpliceTransformerService",
++        "SynFlowNetService",
+     }
+ )
+ 
+@@ -351,6 +354,7 @@ SERVICE_TO_MODULE: dict[str, str] = {
+     "SpliceAIService": "proto_tools.modal.rna_splicing.spliceai_deployment.spliceai_service",
+     "SpliceAI2Service": "proto_tools.modal.rna_splicing.spliceai2_deployment.spliceai2_service",
+     "SpliceTransformerService": "proto_tools.modal.rna_splicing.splice_transformer_deployment.splice_transformer_service",
++    "SynFlowNetService": "proto_tools.modal.molecular_generation.synflownet_deployment.synflownet_service",
+     "StructureMetricsService": (
+         "proto_tools.modal.structure_scoring.structure_metrics_deployment.structure_metrics_service"
+     ),
+diff --git a/proto_tools/modal/molecular_generation/synflownet_deployment/README.md b/proto_tools/modal/molecular_generation/synflownet_deployment/README.md
+new file mode 100644
+index 00000000..f130e02b
+--- /dev/null
++++ b/proto_tools/modal/molecular_generation/synflownet_deployment/README.md
+@@ -0,0 +1,20 @@
++# SynFlowNet deployment
++
++Modal deployment for the [`synflownet` toolkit](../../../tools/molecular_generation/synflownet/README.md)
++(`synflownet-sample`).
++
++## Provisioning the checkpoint
++
++SynFlowNet has no publicly distributed weights, so this service needs a **trained checkpoint**
++before it can serve requests. Train a model with the
++[upstream repo](https://github.com/mirunacrt/synflownet) and place the resulting `model_state.pt`
++on the Modal weights volume under `synflownet/model_state.pt` (the `PROTO_MODEL_CACHE` mount at
++`/weights`). Requests then run with `model_checkpoint="default"`.
++
++Because there are no weights to warm, the build-time warmup only bakes the tool source into the
++image; the standalone environment is built on the first request once the checkpoint is present.
++
++## Benchmarks
++
++_Not yet recorded. Deployment benchmark tables here are generated by
++`pytest --benchmark --use-modal` once the service has been deployed with a provisioned checkpoint._
+diff --git a/proto_tools/modal/molecular_generation/synflownet_deployment/synflownet_service.py b/proto_tools/modal/molecular_generation/synflownet_deployment/synflownet_service.py
+new file mode 100644
+index 00000000..97a06a19
+--- /dev/null
++++ b/proto_tools/modal/molecular_generation/synflownet_deployment/synflownet_service.py
+@@ -0,0 +1,95 @@
++"""SynFlowNet Modal service.
++
++Delegates to the proto-tools ``run_synflownet_sample`` function for parameter validation,
++environment setup, and model inference. SynFlowNet has no publicly distributed weights, so unlike
++most services there is nothing to warm at build time: a trained checkpoint must be present on the
++``PROTO_MODEL_CACHE`` volume (as ``synflownet/model_state.pt``) before the service can serve
++requests. The warmup therefore only bakes the tool source into the image; the standalone env is
++built on the first request once the checkpoint is available. See ``synflownet_deployment/README.md``.
++"""
++
++from typing import Any
++
++import modal
++
++from proto_tools.modal.app import HF_TOKEN_SECRET, MODEL_CACHE, SCALEDOWN_WINDOW, SERVICE_RETRIES, get_app_for_service
++from proto_tools.modal.base_images import GPU_BASE, with_proto_tools
++from proto_tools.modal.gpu_profiles import GPU_DEFAULT
++from proto_tools.modal.manifest import SERVICE_MODAL_TIMEOUTS
++from proto_tools.modal.registry import register_tools
++from proto_tools.modal.utils import RUNTIME_ENV, ensure_gpu_ready, env_for, run_tool_call
++
++
++def _warmup() -> None:
++    """Deploy-time: bake the tool source into the image (no public weights to warm)."""
++    from proto_tools.tools.molecular_generation.synflownet.synflownet_sample import (  # noqa: F401
++        run_synflownet_sample,
++    )
++
++
++image = (
++    with_proto_tools(GPU_BASE)
++    .env(env_for())
++    .run_function(
++        _warmup, gpu=GPU_DEFAULT, volumes={"/weights": MODEL_CACHE}, secrets=[HF_TOKEN_SECRET], include_source=False
++    )
++    .env(RUNTIME_ENV)
++)
++
++
++app = get_app_for_service("SynFlowNetService")
++
++
++@app.cls(
++    include_source=False,
++    image=image,
++    gpu=GPU_DEFAULT,
++    scaledown_window=SCALEDOWN_WINDOW,
++    volumes={"/weights": MODEL_CACHE},
++    timeout=SERVICE_MODAL_TIMEOUTS["SynFlowNetService"],
++    retries=SERVICE_RETRIES,
++    secrets=[HF_TOKEN_SECRET],
++)
++@register_tools({"synflownet-sample": "sample"})
++class SynFlowNetService:
++    """Modal service for SynFlowNet synthesizable-molecule generation."""
++
++    @modal.enter()
++    def setup(self) -> None:
++        """Start a persistent worker so the GFlowNet stays loaded across requests."""
++        ensure_gpu_ready("synflownet")
++        from proto_tools.utils.tool_instance import ToolInstance
++
++        self._persist_ctx = ToolInstance.persist_tool("synflownet")
++        self.instance = self._persist_ctx.__enter__()
++
++    @modal.exit()
++    def teardown(self) -> None:
++        """Close the persistent worker context manager on container shutdown."""
++        self._persist_ctx.__exit__(None, None, None)
++
++    @modal.method()
++    def sample(self, input_dict: dict[str, Any], config_dict: dict[str, Any]) -> dict[str, Any]:
++        """Generate synthesizable molecules using a trained SynFlowNet GFlowNet.
++
++        Args:
++            input_dict (dict[str, Any]): Mapping of input names to their serialized values.
++            config_dict (dict[str, Any]): Mapping of configuration parameter names to values.
++
++        Returns:
++            dict[str, Any]: One sample set of generated molecules per request.
++        """
++        from proto_tools.tools.molecular_generation.synflownet.synflownet_sample import (
++            SynFlowNetSampleConfig,
++            SynFlowNetSampleInput,
++            run_synflownet_sample,
++        )
++
++        return run_tool_call(
++            run_synflownet_sample,
++            SynFlowNetSampleInput,
++            SynFlowNetSampleConfig,
++            input_dict,
++            config_dict,
++            instance=self.instance,
++        )
+diff --git a/proto_tools/modal/tool_map.py b/proto_tools/modal/tool_map.py
+index 9b463da7..b7c70057 100644
+--- a/proto_tools/modal/tool_map.py
++++ b/proto_tools/modal/tool_map.py
+@@ -128,6 +128,7 @@ TOOL_MAP: dict[str, ToolEntry] = {
+     "spliceai2-predict": ToolEntry("proto-tools-spliceai2", "SpliceAI2Service", "predict", True),
+     "spliceai2-score": ToolEntry("proto-tools-spliceai2", "SpliceAI2Service", "score", True),
+     "structure-metrics": ToolEntry("proto-tools-structure-metrics", "StructureMetricsService", "compute", False),
++    "synflownet-sample": ToolEntry("proto-tools-synflownet", "SynFlowNetService", "sample", True),
+     "tmalign-alignment": ToolEntry("proto-tools-tmalign", "TMalignService", "align", False),
+     "usalign-alignment": ToolEntry("proto-tools-usalign", "USalignService", "align", False),
+     "viennarna-prediction": ToolEntry("proto-tools-viennarna", "ViennaRNAService", "predict", False),
+diff --git a/proto_tools/tools/__init__.py b/proto_tools/tools/__init__.py
+index 29516eec..7fbd99bd 100644
+--- a/proto_tools/tools/__init__.py
++++ b/proto_tools/tools/__init__.py
+@@ -453,6 +453,18 @@ from proto_tools.tools.molecular_docking import (
+     run_vina_docking,
+ )
+ 
++# Molecular generation tools
++from proto_tools.tools.molecular_generation import (
++    SynFlowNetMolecule,
++    SynFlowNetMoleculeMetrics,
++    SynFlowNetRequest,
++    SynFlowNetSampleConfig,
++    SynFlowNetSampleInput,
++    SynFlowNetSampleOutput,
++    SynFlowNetSampleSet,
++    run_synflownet_sample,
++)
++
+ # Mutagenesis tools
+ from proto_tools.tools.mutagenesis import (
+     RandomNucleotideSample,
+@@ -1881,6 +1893,15 @@ __all__ = [
+     "VinaReferenceLigandBox",
+     "VinaSearchBox",
+     "run_vina_docking",
++    # Molecular generation - SynFlowNet
++    "SynFlowNetMolecule",
++    "SynFlowNetMoleculeMetrics",
++    "SynFlowNetRequest",
++    "SynFlowNetSampleConfig",
++    "SynFlowNetSampleInput",
++    "SynFlowNetSampleOutput",
++    "SynFlowNetSampleSet",
++    "run_synflownet_sample",
+     # RNA splicing - SpliceTransformer
+     "run_splice_transformer",
+     "SpliceTransformerInput",
+diff --git a/proto_tools/tools/molecular_generation/__init__.py b/proto_tools/tools/molecular_generation/__init__.py
+new file mode 100644
+index 00000000..1f74ff00
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/__init__.py
+@@ -0,0 +1,23 @@
++"""Molecular generation models for de novo design of small molecules."""
++
++from proto_tools.tools.molecular_generation.synflownet import (
++    SynFlowNetMolecule,
++    SynFlowNetMoleculeMetrics,
++    SynFlowNetRequest,
++    SynFlowNetSampleConfig,
++    SynFlowNetSampleInput,
++    SynFlowNetSampleOutput,
++    SynFlowNetSampleSet,
++    run_synflownet_sample,
++)
++
++__all__ = [
++    "SynFlowNetMolecule",
++    "SynFlowNetMoleculeMetrics",
++    "SynFlowNetRequest",
++    "SynFlowNetSampleConfig",
++    "SynFlowNetSampleInput",
++    "SynFlowNetSampleOutput",
++    "SynFlowNetSampleSet",
++    "run_synflownet_sample",
++]
+diff --git a/proto_tools/tools/molecular_generation/synflownet/README.md b/proto_tools/tools/molecular_generation/synflownet/README.md
+new file mode 100644
+index 00000000..8d1bceec
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/synflownet/README.md
+@@ -0,0 +1,52 @@
++<a href="https://bio-pro.mintlify.app/tools/molecular-generation/synflownet"><img align="right" src="https://img.shields.io/badge/View_Docs-046e7a?style=flat-square&logo=readthedocs&logoColor=white" alt="View Docs"></a><a href="examples/example.ipynb"><img align="right" src="https://img.shields.io/badge/Example_Notebook-2e7d32?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0yIDNoNmE0IDQgMCAwIDEgNCA0djE0YTMgMyAwIDAgMC0zLTNIMnoiLz48cGF0aCBkPSJNMjIgM2gtNmE0IDQgMCAwIDAtNCA0djE0YTMgMyAwIDAgMSAzLTNoN3oiLz48L3N2Zz4=" alt="Example Notebook"></a><img align="right" src="https://img.shields.io/badge/Use_on_Proto-coming_soon-6c5ce7?style=flat-square&labelColor=6c5ce7&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwb2x5Z29uIHBvaW50cz0iMTMgMiAzIDE0IDEyIDE0IDExIDIyIDIxIDEwIDEyIDEwIDEzIDIiLz48L3N2Zz4=&logoColor=white" alt="Use on Proto (coming soon)">
++
++# SynFlowNet
++
++![SynFlowNet](https://proto-bio.github.io/proto-assets/images/tool/synflownet/hero.png)
++
++> [!NOTE]
++> **License:** SynFlowNet is open source and free for academic and commercial use under an MIT license. Please refer to [the license](https://github.com/mirunacrt/synflownet/blob/main/LICENSE) for full terms. Trained checkpoints are not distributed; users provision their own weights by training with the upstream repository.
++
++## Overview
++
++[SynFlowNet](https://github.com/mirunacrt/synflownet) is a generative flow network (GFlowNet) that designs small molecules over a synthesis action space, assembling each molecule from purchasable building blocks and chemical reactions so that every sample arrives with an explicit synthesis route. This toolkit loads a trained SynFlowNet checkpoint and samples synthesizable molecules on GPU, returning one sample set per request with each molecule's canonical SMILES, synthesis route, consumed building blocks, and per-molecule metrics (reward, number of reactions, QED, and molecular weight).
++
++## Background
++
++Generative flow networks ([Bengio et al., 2021](https://arxiv.org/abs/2106.04399)) learn a stochastic policy that constructs objects through a sequence of actions and samples them in proportion to a reward, which yields diverse, high-reward candidates rather than collapsing onto a single mode. SynFlowNet ([Cretu et al., 2024](https://arxiv.org/abs/2405.01155)) adapts this framework to molecular design by replacing the usual atom- or fragment-level action space with a *synthesis* action space: the policy selects building blocks and applies reaction templates step by step, so the terminal state is a molecule together with the reaction pathway that produces it.
++
++Because molecules are built only through valid reactions over purchasable reactants, SynFlowNet-generated candidates are synthesizable by construction, avoiding the common failure mode of generative models that propose structures no chemist can readily make. The sampler is guided by a task reward during training; the upstream repository ships reward functions including an sEH binding proxy, QED, Vina docking, and oracles from PyTDC, and new objectives can be added. Sampling in proportion to reward trades off potency against diversity, which is useful when the goal is a varied shortlist of viable candidates rather than a single optimum.
++
++### Learning Resources
++
++- [SynFlowNet repository](https://github.com/mirunacrt/synflownet) - source code, reward tasks, training scripts, and the building-block and reaction-template data used for sampling.
++- [SynFlowNet paper](https://arxiv.org/abs/2405.01155) (Cretu et al., ICLR 2025) - the method, synthesis action space, and benchmark results.
++- [recursionpharma/gflownet](https://github.com/recursionpharma/gflownet) - the GFlowNet training codebase SynFlowNet builds on.
++
++## Tools
++
++### SynFlowNet Molecule Sampling (`synflownet-sample`)
++
++Samples synthesizable small molecules from a trained SynFlowNet GFlowNet, producing one sample set per request. Each request may carry an optional named reward `objective` (for checkpoints trained to switch objectives) and a free-form `label` echoed back on the matching sample set; a bare string or list of strings is coerced into requests carrying those objectives, and empty input yields a single default request.
++
++#### Applications
++
++Use this tool to generate a diverse, synthesizable candidate library for hit finding or lead expansion, to propose molecules optimized toward a trained objective such as an sEH binding proxy or QED, or to seed downstream docking, property prediction, and filtering workflows with structures that already come with a proposed synthesis route. Sampling multiple requests in one call is convenient for sweeping objectives or generating independent, reproducible batches.
++
++#### Usage Tips
++
++- **`model_checkpoint` is user-provisioned.** No trained weights are publicly distributed, so the checkpoint must be trained with the upstream repository. `"default"` loads the checkpoint placed in the managed weights cache; any other value is treated as an explicit path to a `.pt` checkpoint. A local checkpoint path is not available on hosted workers, so run locally with `device="cuda"` when pointing at your own file.
++- **Raise `num_molecules_per_request` for larger libraries.** Each request returns up to this many molecules; with `unique_molecules=True` the sampler oversamples and deduplicates canonical SMILES, and a low-diversity checkpoint may return fewer than requested after the dispatch cap, which is logged as a warning.
++- **Tune `sampling_temperature` to trade potency against diversity.** This is the GFlowNet inverse-temperature (beta): higher values concentrate sampling on high-reward molecules, while lower values broaden chemical diversity. Combine with `random_action_prob` for additional exploration when samples collapse onto a narrow region of chemical space.
++- **Use `seed` for reproducible batches.** When omitted, the framework draws a seed and advances it across every dispatch so that duplicate requests still diverge; reuse the returned seed with the same checkpoint and configuration to reproduce a run.
++
++## Toolkit Notes
++
++<a href="https://bio-pro.mintlify.app/tools/guides/tool-persistence"><img src="https://img.shields.io/badge/Tool_Persistence_→-046e7a?style=flat-square&logo=readthedocs&logoColor=white" alt="Tool Persistence guide"></a> <a href="https://bio-pro.mintlify.app/tools/guides/device-management"><img src="https://img.shields.io/badge/Device_Management_→-046e7a?style=flat-square&logo=readthedocs&logoColor=white" alt="Device Management guide"></a> <a href="https://bio-pro.mintlify.app/tools/guides/parallel-execution"><img src="https://img.shields.io/badge/Parallel_Execution_→-046e7a?style=flat-square&logo=readthedocs&logoColor=white" alt="Parallel Execution guide"></a> <a href="https://bio-pro.mintlify.app/tools/guides/cloud-inference"><img src="https://img.shields.io/badge/Cloud_Inference_→-046e7a?style=flat-square&logo=readthedocs&logoColor=white" alt="Cloud Inference guide"></a>
++
++These apply to the SynFlowNet tool in this toolkit (`synflownet-sample`).
++
++- **Runs on GPU.** Sampling the GFlowNet policy uses a CUDA device; raise `batch_size` for throughput and lower it if the run exhausts GPU memory.
++- **A trained checkpoint is required; no public weights exist.** SynFlowNet does not ship trained model weights. Train a checkpoint with the upstream repository and provision it (as the managed `"default"` checkpoint or an explicit `.pt` path) before sampling.
++- **Building blocks and reaction templates ship with the upstream package.** The purchasable building-block set and reaction templates that define the synthesis action space come from SynFlowNet itself, so no separate chemistry database download is required for sampling.
++- **Molecules are synthesizable by construction.** Every generated molecule is assembled through valid reactions over the building-block set, so its reported synthesis route and consumed building blocks describe a concrete way to make it.
+diff --git a/proto_tools/tools/molecular_generation/synflownet/__init__.py b/proto_tools/tools/molecular_generation/synflownet/__init__.py
+new file mode 100644
+index 00000000..4a99382a
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/synflownet/__init__.py
+@@ -0,0 +1,23 @@
++"""SynFlowNet synthesizable-molecule generation."""
++
++from proto_tools.tools.molecular_generation.synflownet.synflownet_sample import (
++    SynFlowNetMolecule,
++    SynFlowNetMoleculeMetrics,
++    SynFlowNetRequest,
++    SynFlowNetSampleConfig,
++    SynFlowNetSampleInput,
++    SynFlowNetSampleOutput,
++    SynFlowNetSampleSet,
++    run_synflownet_sample,
++)
++
++__all__ = [
++    "SynFlowNetMolecule",
++    "SynFlowNetMoleculeMetrics",
++    "SynFlowNetRequest",
++    "SynFlowNetSampleConfig",
++    "SynFlowNetSampleInput",
++    "SynFlowNetSampleOutput",
++    "SynFlowNetSampleSet",
++    "run_synflownet_sample",
++]
+diff --git a/proto_tools/tools/molecular_generation/synflownet/cite.bib b/proto_tools/tools/molecular_generation/synflownet/cite.bib
+new file mode 100644
+index 00000000..5c9f2db8
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/synflownet/cite.bib
+@@ -0,0 +1,9 @@
++@misc{cretu_2024_synflownet,
++  title={{SynFlowNet}: Design of Diverse and Novel Molecules with Synthesis Constraints},
++  author={Cretu, Miruna and Harris, Charles and Igashov, Ilia and Schneuing, Arne and Segler, Marwin and Correia, Bruno and Roy, Julien and Bengio, Emmanuel and Li{\`o}, Pietro},
++  year={2024},
++  eprint={2405.01155},
++  archivePrefix={arXiv},
++  primaryClass={cs.LG},
++  url={https://arxiv.org/abs/2405.01155}
++}
+diff --git a/proto_tools/tools/molecular_generation/synflownet/examples/example.ipynb b/proto_tools/tools/molecular_generation/synflownet/examples/example.ipynb
+new file mode 100644
+index 00000000..fe12ff1e
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/synflownet/examples/example.ipynb
+@@ -0,0 +1,188 @@
++{
++ "cells": [
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "# SynFlowNet: Synthesizable Molecule Generation\n",
++    "\n",
++    "This notebook demonstrates `run_synflownet_sample`, which uses a SynFlowNet GFlowNet to generate small molecules together with the synthesis route and building blocks needed to make them, so the proposed molecules are synthesizable by construction. Each generation request produces a sample set of molecules, and every molecule carries reward and property metrics (reward, number of reactions, QED, molecular weight). SynFlowNet samples in proportion to a learned reward, trading off exploration and reward concentration via the sampling temperature.\n",
++    "\n",
++    "- Code and models: https://github.com/mirunacrt/synflownet\n",
++    "- Paper: [SynFlowNet: Towards Molecule Design with Guaranteed Synthesis Pathways (arXiv:2405.01155)](https://arxiv.org/abs/2405.01155)"
++   ],
++   "id": "title-md"
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "from proto_tools.utils.notebook_docs import display_api_reference\n",
++    "from proto_tools import (\n",
++    "    run_synflownet_sample,\n",
++    "    SynFlowNetSampleInput,\n",
++    "    SynFlowNetSampleConfig,\n",
++    "    SynFlowNetRequest,\n",
++    ")"
++   ],
++   "id": "imports"
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "display_api_reference(\"synflownet-sample\", \"input\", \"run_synflownet_sample\")"
++   ],
++   "id": "input-ref"
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "display_api_reference(\"synflownet-sample\", \"config\", \"run_synflownet_sample\")"
++   ],
++   "id": "config-ref"
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "display_api_reference(\"synflownet-sample\", \"output\", \"run_synflownet_sample\")"
++   ],
++   "id": "output-ref"
++  },
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "## Running SynFlowNet\n",
++    "\n",
++    "> **Note:** Running the tool requires a **GPU** and a **user-provisioned trained checkpoint**. SynFlowNet ships no public weights, so you must train a checkpoint (see the upstream repository) and either place it in the managed weights cache as the `\"default\"` checkpoint or pass its path via `model_checkpoint`. The execution cells below are therefore **illustrative** and are wrapped in `try`/`except` so the notebook runs end-to-end on un-provisioned hosts; on such a host they will print a friendly message and may be skipped."
++   ],
++   "id": "gpu-note-md"
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "# Basic usage: a single default request.\n",
++    "# SynFlowNetSampleInput() with no arguments yields one default request\n",
++    "# that samples from the checkpoint's native reward.\n",
++    "inputs = SynFlowNetSampleInput()\n",
++    "config = SynFlowNetSampleConfig(\n",
++    "    num_molecules_per_request=8,\n",
++    "    device=\"cuda\",  # SynFlowNet requires a GPU\n",
++    ")\n",
++    "\n",
++    "try:\n",
++    "    result = run_synflownet_sample(inputs, config)\n",
++    "    print(f\"success: {result.success}\")\n",
++    "    print(f\"molecules generated: {len(result.molecules)}\")\n",
++    "    for mol in result.molecules[:5]:\n",
++    "        reward = mol.metrics.get(\"reward\")\n",
++    "        qed = mol.metrics.get(\"qed\")\n",
++    "        print(f\"  {mol.smiles}  reward={reward}  qed={qed}\")\n",
++    "except Exception as exc:\n",
++    "    print(\"Skipping execution: SynFlowNet requires a GPU + a user-provisioned trained checkpoint.\")\n",
++    "    print(f\"  ({type(exc).__name__}: {exc})\")"
++   ],
++   "id": "basic-usage"
++  },
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "## Advanced usage\n",
++    "\n",
++    "Pass several `SynFlowNetRequest`s to generate one sample set per request. A request's `objective` conditions multi-objective checkpoints (e.g. `\"seh\"`, `\"qed\"`) and its `label` is echoed back on the matching sample set. Here we also lower the `sampling_temperature` (broadening diversity) and raise `max_reaction_steps` (allowing longer synthesis routes)."
++   ],
++   "id": "advanced-md"
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "# Advanced usage: multiple objective-conditioned requests + non-default knobs.\n",
++    "multi_inputs = SynFlowNetSampleInput(\n",
++    "    requests=[\n",
++    "        SynFlowNetRequest(objective=\"seh\", label=\"sEH binders\"),\n",
++    "        SynFlowNetRequest(objective=\"qed\", label=\"drug-like\"),\n",
++    "    ]\n",
++    ")\n",
++    "multi_config = SynFlowNetSampleConfig(\n",
++    "    num_molecules_per_request=8,\n",
++    "    sampling_temperature=16.0,  # lower beta -> broader, more diverse sampling\n",
++    "    max_reaction_steps=6,       # allow longer synthesis routes\n",
++    "    device=\"cuda\",\n",
++    "    seed=42,\n",
++    ")\n",
++    "\n",
++    "try:\n",
++    "    multi_result = run_synflownet_sample(multi_inputs, multi_config)\n",
++    "    for sample_set in multi_result.sample_sets:\n",
++    "        print(f\"[{sample_set.label}] objective={sample_set.objective}: {len(sample_set.molecules)} molecules\")\n",
++    "        for mol in sample_set.molecules[:3]:\n",
++    "            print(f\"    {mol.smiles}\")\n",
++    "            print(f\"      reward={mol.metrics.get('reward')}  route={mol.synthesis_route}\")\n",
++    "            print(f\"      building_blocks={mol.building_blocks}\")\n",
++    "except Exception as exc:\n",
++    "    print(\"Skipping execution: SynFlowNet requires a GPU + a user-provisioned trained checkpoint.\")\n",
++    "    print(f\"  ({type(exc).__name__}: {exc})\")"
++   ],
++   "id": "advanced-usage"
++  },
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "## Export results\n",
++    "\n",
++    "The output exports to `\"smi\"` (one SMILES per line), `\"csv\"` (SMILES plus per-molecule metrics), and `\"json\"` (the full typed output). The export cell is guarded so it is skipped when no result was produced above."
++   ],
++   "id": "export-md"
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "from pathlib import Path\n",
++    "\n",
++    "output_dir = Path(\"./example_output\")\n",
++    "output_dir.mkdir(exist_ok=True)\n",
++    "\n",
++    "try:\n",
++    "    result.export(name=\"synflownet_molecules\", export_path=output_dir, file_format=\"smi\")\n",
++    "    result.export(name=\"synflownet_molecules\", export_path=output_dir, file_format=\"csv\")\n",
++    "    print(f\"Results exported to {output_dir}\")\n",
++    "except NameError:\n",
++    "    print(\"Skipping export: no result was produced (requires a GPU + a user-provisioned checkpoint).\")"
++   ],
++   "id": "export"
++  }
++ ],
++ "metadata": {
++  "kernelspec": {
++   "name": "python3",
++   "display_name": "proto-tools"
++  },
++  "language_info": {
++   "name": "python"
++  }
++ },
++ "nbformat": 4,
++ "nbformat_minor": 5
++}
+diff --git a/proto_tools/tools/molecular_generation/synflownet/license.yaml b/proto_tools/tools/molecular_generation/synflownet/license.yaml
+new file mode 100644
+index 00000000..d2f1ca9d
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/synflownet/license.yaml
+@@ -0,0 +1,8 @@
++code:
++  spdx: MIT
++  url: https://github.com/mirunacrt/synflownet/blob/main/LICENSE
++commercial_use: 'yes'
++redistribution: true
++attribution_required: false
++notes: SynFlowNet (mirunacrt/synflownet) is MIT-licensed and builds on recursionpharma/gflownet, also MIT. No trained weights are distributed; checkpoints are user-provisioned (trained with the upstream repository) and are not a redistributed asset.
++last_updated: '2026-10-18'
+diff --git a/proto_tools/tools/molecular_generation/synflownet/links.yaml b/proto_tools/tools/molecular_generation/synflownet/links.yaml
+new file mode 100644
+index 00000000..3bf9c2e8
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/synflownet/links.yaml
+@@ -0,0 +1,7 @@
++github: https://github.com/mirunacrt/synflownet
++preprint: https://arxiv.org/abs/2405.01155
++organizations:
++  - University of Cambridge
++  - EPFL
++  - Microsoft Research
++  - Valence Labs
+diff --git a/proto_tools/tools/molecular_generation/synflownet/standalone/inference.py b/proto_tools/tools/molecular_generation/synflownet/standalone/inference.py
+new file mode 100644
+index 00000000..9c109d3f
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/synflownet/standalone/inference.py
+@@ -0,0 +1,301 @@
++"""SynFlowNet synthesizable-molecule sampling (standalone inference)."""
++
++import gc
++import json
++import sys
++from pathlib import Path
++from typing import Any
++
++from standalone_helpers import get_logger, get_random_int, resolve_weights_dir, serialize_output, set_torch_seed
++
++logger = get_logger(__name__)
++
++# Checkpoint filename SynFlowNet writes under its run directory; also the name we look
++# for in the managed weights cache when model_checkpoint == "default".
++DEFAULT_CHECKPOINT_NAME = "model_state.pt"
++
++
++def _resolve_checkpoint(model_checkpoint: str) -> str:
++    """Resolve the checkpoint path, honoring the managed weights cache for 'default'."""
++    if model_checkpoint != "default":
++        if not Path(model_checkpoint).is_file():
++            raise FileNotFoundError(f"synflownet: checkpoint not found at {model_checkpoint!r}")
++        return model_checkpoint
++    weights_dir = resolve_weights_dir("synflownet")
++    if weights_dir is None:
++        raise FileNotFoundError("synflownet: could not resolve a weights directory for the default checkpoint")
++    candidate = Path(weights_dir) / DEFAULT_CHECKPOINT_NAME
++    if not candidate.is_file():
++        raise FileNotFoundError(
++            f"synflownet: default checkpoint {candidate} not found; provision a trained SynFlowNet "
++            f"checkpoint there or pass an explicit model_checkpoint path."
++        )
++    return str(candidate)
++
++
++class SynFlowNetModel:
++    """Loads a trained SynFlowNet GFlowNet and samples molecules from its policy."""
++
++    def __init__(self, checkpoint_path: str) -> None:
++        """Initialize lazy model state keyed on the resolved checkpoint path."""
++        self.checkpoint_path = checkpoint_path
++        self._loaded = False
++        self.device: str | None = None
++        self._trial: Any = None
++        self._model: Any = None
++        self._ctx: Any = None
++        self._env: Any = None
++        self._task: Any = None
++        self._sampler: Any = None
++
++    def load(self, device: str) -> None:
++        """Restore the trainer from the checkpoint and move the policy model to ``device``."""
++        import torch
++        from synflownet.tasks.reactions_task import ReactionTrainer
++
++        logger.update_status("Loading SynFlowNet checkpoint")
++        # SynFlowNet rebuilds env/ctx/task/sampler from the checkpoint's stored config.
++        trial = ReactionTrainer.load_from_checkpoint(self.checkpoint_path)
++        self._trial = trial
++        # The exponential-moving-average sampling model is preferred for generation; fall back
++        # to the trained policy model when a trainer build doesn't expose one.
++        self._model = getattr(trial, "sampling_model", None) or trial.model
++        self._ctx = trial.ctx
++        self._env = trial.env
++        self._task = trial.task
++        self._sampler = trial.sampler
++
++        self._model.eval()
++        self._model.to(device)
++        if device.startswith("cuda") and torch.cuda.is_available():
++            torch.cuda.set_device(device)
++        self.device = device
++        self._loaded = True
++
++    def sample(
++        self,
++        num_molecules: int,
++        sampling_temperature: float,
++        random_action_prob: float,
++        max_reaction_steps: int,
++        objective: str | None = None,
++        seed: int | None = None,
++        device: str = "cuda",
++        verbose: bool = False,
++        **_: Any,
++    ) -> dict[str, Any]:
++        """Sample molecules from the trained GFlowNet policy.
++
++        Args:
++            num_molecules: Number of molecules (trajectories) to sample.
++            sampling_temperature: GFlowNet inverse-temperature (beta); overrides the
++                checkpoint's conditioning distribution with this constant.
++            random_action_prob: Probability of a uniform-random action per step.
++            max_reaction_steps: Maximum synthesis actions per molecule.
++            objective: Optional named reward objective for multi-objective checkpoints.
++            seed: Random seed; a concrete int is drawn when None.
++            device: Device to run on ('cuda' or 'cpu').
++            verbose: Whether to log status messages.
++
++        Returns:
++            dict[str, Any]: ``{"molecules": [{"smiles", "synthesis_route",
++                "building_blocks", "metrics"}, ...]}`` with one entry per valid molecule.
++        """
++        import torch
++        from rdkit import Chem
++        from rdkit.Chem import QED, Descriptors
++
++        set_torch_seed(seed)
++        sampling_seed = seed if seed is not None else get_random_int()
++
++        if not self._loaded or self.device != device:
++            self.load(device)
++        if objective is not None and verbose:
++            logger.info("synflownet: objective=%r (effective only for objective-conditioned checkpoints)", objective)
++
++        # Bound trajectory length to the requested number of synthesis steps.
++        self._sampler.max_len = max_reaction_steps
++
++        # Constant inverse-temperature conditioning at the requested beta.
++        cond_info = self._build_cond_info(num_molecules, sampling_temperature, device)
++
++        torch.manual_seed(sampling_seed)
++        with torch.no_grad():
++            trajectories = self._sampler.sample_from_model(
++                self._model,
++                num_molecules,
++                cond_info,
++                random_action_prob=random_action_prob,
++            )
++
++        mols: list[Any] = []
++        valid_trajs: list[dict[str, Any]] = []
++        for traj in trajectories:
++            if not traj.get("is_valid", False):
++                continue
++            mol = self._ctx.graph_to_obj(traj["result"])
++            if mol is None:
++                continue
++            mols.append(mol)
++            valid_trajs.append(traj)
++
++        rewards = self._rewards_for(mols, valid_trajs)
++
++        molecules: list[dict[str, Any]] = []
++        for mol, traj, reward in zip(mols, valid_trajs, rewards, strict=True):
++            smiles = Chem.MolToSmiles(mol)
++            route, building_blocks = _route_and_blocks(traj)
++            try:
++                qed = float(QED.qed(mol))
++            except Exception:  # QED can fail on exotic valences; drop the key rather than fail the batch
++                qed = float("nan")
++            molecules.append(
++                {
++                    "smiles": smiles,
++                    "synthesis_route": route,
++                    "building_blocks": building_blocks,
++                    "metrics": {
++                        "reward": reward,
++                        "num_reactions": float(len(traj.get("traj", []))),
++                        "qed": qed,
++                        "molecular_weight": float(Descriptors.MolWt(mol)),
++                    },
++                }
++            )
++
++        self.unload()
++        return {"molecules": molecules}
++
++    def _build_cond_info(self, n: int, beta: float, device: str) -> Any:
++        """Build a constant inverse-temperature conditioning tensor for ``n`` samples."""
++        import torch
++
++        # Ask the task to encode a constant beta so the policy samples at the requested
++        # temperature regardless of the distribution the checkpoint was trained with.
++        temperature_conditional = getattr(self._task, "temperature_conditional", None)
++        if temperature_conditional is not None and hasattr(temperature_conditional, "encode"):
++            beta_tensor = torch.full((n,), float(beta))
++            encoding = temperature_conditional.encode(beta_tensor)
++            return encoding.to(device)
++        # Fall back to the task's own conditional sampling (final=True uses a high constant beta).
++        cond_info = self._task.sample_conditional_information(n, 0, final=True)
++        return cond_info["encoding"].to(device)
++
++    def _rewards_for(self, mols: list[Any], trajs: list[dict[str, Any]]) -> list[float]:
++        """Compute the task reward per molecule, falling back to the sampler's reward_pred."""
++        if not mols:
++            return []
++        traj_lens = [len(t.get("traj", [])) for t in trajs]
++        try:
++            obj_properties, _is_valid = self._task.compute_obj_properties(mols, traj_lens)
++            flat = obj_properties.flatten().tolist() if hasattr(obj_properties, "flatten") else list(obj_properties)
++            if len(flat) == len(mols):
++                return [float(x) for x in flat]
++        except Exception as exc:  # proxy failures shouldn't sink an otherwise-valid sample
++            logger.warning("synflownet: task reward computation failed (%s); using sampler reward_pred", exc)
++        return [float(t.get("reward_pred", float("nan"))) for t in trajs]
++
++    def to_device(self, device: str) -> None:
++        """Move the policy model to a different device."""
++        import torch
++
++        if not self._loaded:
++            raise ValueError("synflownet: cannot move an unloaded model to device — call load() first")
++        if self.device != device:
++            self._model.to(device)
++            if device.startswith("cuda") and torch.cuda.is_available():
++                torch.cuda.set_device(device)
++            self.device = device
++
++    def unload(self) -> None:
++        """Release the policy model and cached GPU memory."""
++        import torch
++
++        self._trial = None
++        self._model = None
++        self._ctx = None
++        self._env = None
++        self._task = None
++        self._sampler = None
++        self._loaded = False
++        self.device = None
++        gc.collect()
++        if torch.cuda.is_available():
++            torch.cuda.empty_cache()
++
++
++def _route_and_blocks(traj: dict[str, Any]) -> tuple[list[str], list[str]]:
++    """Extract a human-readable synthesis route and building-block SMILES from a trajectory."""
++    route: list[str] = []
++    for entry in traj.get("traj", []):
++        action = entry[1] if isinstance(entry, (list, tuple)) and len(entry) > 1 else None
++        if action is not None:
++            route.append(str(getattr(action, "action", action)))
++    building_blocks: list[str] = [bb if isinstance(bb, str) else str(bb) for bb in (traj.get("bbs") or [])]
++    return route, building_blocks
++
++
++# ============================================================================
++# Dispatch
++# ============================================================================
++_model: SynFlowNetModel | None = None
++_model_checkpoint: str | None = None
++
++
++def dispatch(input_dict: dict[str, Any]) -> dict[str, Any]:
++    """Entry point for both persistent-worker and one-shot execution."""
++    global _model, _model_checkpoint
++
++    checkpoint_path = _resolve_checkpoint(input_dict["model_checkpoint"])
++    if _model is not None and _model_checkpoint != checkpoint_path:
++        _model.unload()
++        _model = None
++        _model_checkpoint = None
++    if _model is None:
++        _model = SynFlowNetModel(checkpoint_path=checkpoint_path)
++        _model_checkpoint = checkpoint_path
++
++    operation = input_dict["operation"]
++    if operation == "sample":
++        return _model.sample(
++            num_molecules=input_dict["num_molecules"],
++            sampling_temperature=input_dict["sampling_temperature"],
++            random_action_prob=input_dict["random_action_prob"],
++            max_reaction_steps=input_dict["max_reaction_steps"],
++            objective=input_dict.get("objective"),
++            seed=input_dict.get("seed"),
++            device=input_dict["device"],
++            verbose=input_dict["verbose"],
++        )
++    raise ValueError(f"synflownet: unknown operation {operation!r}; valid: ['sample']")
++
++
++def to_device(device: str) -> dict[str, Any]:
++    """Move model to specified device (called by DeviceManager)."""
++    global _model
++    if _model is not None and _model._loaded:
++        _model.to_device(device)
++        return {"success": True, "device": device}
++    return {"success": True, "device": device, "note": "model not loaded yet"}
++
++
++def get_memory_stats() -> dict[str, Any]:
++    """Report GPU memory usage (called by DeviceManager for monitoring)."""
++    from standalone_helpers import get_pytorch_memory_stats
++
++    global _model
++    device = _model.device if _model and _model.device is not None else 0
++    return get_pytorch_memory_stats(device)  # type: ignore[no-any-return]
++
++
++if __name__ == "__main__":
++    if len(sys.argv) != 3:
++        raise ValueError("synflownet: usage: python inference.py <input_json_path> <output_json_path>")
++
++    with open(sys.argv[1]) as f:
++        input_data = json.load(f)
++
++    result = dispatch(input_data)
++
++    with open(sys.argv[2], "w") as f:
++        json.dump(serialize_output(result), f)
+diff --git a/proto_tools/tools/molecular_generation/synflownet/standalone/python_version.txt b/proto_tools/tools/molecular_generation/synflownet/standalone/python_version.txt
+new file mode 100644
+index 00000000..09988035
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/synflownet/standalone/python_version.txt
+@@ -0,0 +1 @@
++default: 3.10
+diff --git a/proto_tools/tools/molecular_generation/synflownet/standalone/requirements.txt b/proto_tools/tools/molecular_generation/synflownet/standalone/requirements.txt
+new file mode 100644
+index 00000000..25d004bc
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/synflownet/standalone/requirements.txt
+@@ -0,0 +1,7 @@
++# SynFlowNet and its graph/cheminformatics dependencies.
++# torch is installed by setup.sh (pinned to 2.1.2); torch-geometric companion
++# wheels resolve from the pyg --find-links index for that torch version.
++synflownet @ git+https://github.com/mirunacrt/synflownet.git@main
++torch-geometric>=2.4,<2.6
++rdkit>=2023.9,!=2026.3.3
++numpy>=1.24,<2
+diff --git a/proto_tools/tools/molecular_generation/synflownet/standalone/setup.sh b/proto_tools/tools/molecular_generation/synflownet/standalone/setup.sh
+new file mode 100644
+index 00000000..8d81f53d
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/synflownet/standalone/setup.sh
+@@ -0,0 +1,52 @@
++#!/bin/bash
++# Setup script for the SynFlowNet standalone environment.
++#
++# SynFlowNet generates molecules from a *trained* GFlowNet checkpoint. There are no
++# publicly distributed weights, so the checkpoint is user-provisioned: train a model
++# with the upstream repo (https://github.com/mirunacrt/synflownet) and either drop the
++# resulting model_state.pt into the managed weights cache, or point
++# PROTO_SYNFLOWNET_WEIGHTS_DIR (or PROTO_MODEL_CACHE/synflownet) at a directory that
++# contains it. The building-block and reaction-template data ship with the upstream
++# package under synflownet/data/.
++set -euo pipefail
++source standalone_helpers.sh
++
++echo "Setting up SynFlowNet standalone environment..."
++
++# SynFlowNet pins torch 2.1.2 + torch-geometric wheels built against it.
++proto_install_pytorch "torch==2.1.2"
++
++echo "Installing SynFlowNet and dependencies..."
++# torch-geometric companion wheels are served from the pyg index for the installed torch.
++uv pip install -r requirements.txt --find-links "https://data.pyg.org/whl/torch-2.1.2+cpu.html"
++
++# ─── Checkpoint provisioning precheck ───────────────────────────────────────
++# Resolve the same location the runtime resolves for the 'default' checkpoint: the
++# managed weights cache, honoring PROTO_SYNFLOWNET_WEIGHTS_DIR and PROTO_MODEL_CACHE.
++proto_resolve_weights_dir synflownet   # sets $WEIGHTS_DIR
++checkpoint_configured=""
++[ -n "${PROTO_SYNFLOWNET_WEIGHTS_DIR:-}" ] && checkpoint_configured="yes"
++
++if [ -f "${WEIGHTS_DIR}/model_state.pt" ]; then
++    echo "[synflownet] Using trained checkpoint at ${WEIGHTS_DIR}/model_state.pt"
++elif [ -n "$checkpoint_configured" ]; then
++    echo "ERROR: PROTO_SYNFLOWNET_WEIGHTS_DIR is set but model_state.pt was not found there." >&2
++    echo "Point it at a directory containing a trained SynFlowNet model_state.pt." >&2
++    exit 1
++else
++    {
++        echo "[proto-tools] ASSET_NOT_AVAILABLE: synflownet:checkpoint"
++        echo "A trained SynFlowNet checkpoint (model_state.pt) is not provisioned; it is required"
++        echo "by the synflownet-sample tool when model_checkpoint='default'."
++        echo "Provisioning steps:"
++        echo "  1. Train a model with the upstream repo (https://github.com/mirunacrt/synflownet),"
++        echo "     which writes ./logs/<name>/model_state.pt."
++        echo "  2. Copy that model_state.pt into the managed cache so it is found automatically"
++        echo "     (no environment variable needed), or set PROTO_SYNFLOWNET_WEIGHTS_DIR to the"
++        echo "     directory that contains it."
++        echo "  Alternatively, pass model_checkpoint='<path-to-your-checkpoint.pt>' per call."
++    } >&2
++    exit 64
++fi
++
++echo "SynFlowNet setup complete!"
+diff --git a/proto_tools/tools/molecular_generation/synflownet/synflownet_sample.py b/proto_tools/tools/molecular_generation/synflownet/synflownet_sample.py
+new file mode 100644
+index 00000000..d67be7f2
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/synflownet/synflownet_sample.py
+@@ -0,0 +1,458 @@
++"""proto_tools/tools/molecular_generation/synflownet/synflownet_sample.py.
++
++SynFlowNet synthesizable-molecule sampling tool.
++"""
++
++import csv
++import json
++import logging
++from collections.abc import Iterator
++from pathlib import Path
++from typing import Any, ClassVar
++
++from pydantic import BaseModel, ConfigDict, Field, field_validator
++
++from proto_tools.tools.tool_registry import tool
++from proto_tools.utils import BaseConfig, BaseToolInput, BaseToolOutput, ConfigField, InputField, ToolInstance
++from proto_tools.utils.device import RemoteDevice
++from proto_tools.utils.progress import progress_bar
++from proto_tools.utils.tool_io import Metrics, MetricSpec
++
++logger = logging.getLogger(__name__)
++
++# Sentinel meaning "use the checkpoint provisioned in the managed weights cache"
++# (``resolve_weights_dir('synflownet')/model_state.pt``). Any other value is treated
++# as an explicit path to a user-supplied SynFlowNet checkpoint.
++DEFAULT_CHECKPOINT = "default"
++
++
++# ============================================================================
++# Data Models
++# ============================================================================
++class SynFlowNetRequest(BaseModel):
++    """One molecule-generation request handled by a single SynFlowNet sampling pass.
++
++    Attributes:
++        objective (str | None): Optional named reward objective to condition on,
++            for checkpoints trained to switch objectives at inference (e.g.
++            ``"seh"``, ``"qed"``). ``None`` samples from the checkpoint's native
++            reward.
++        label (str | None): Optional free-form label echoed back on the matching
++            sample set, to tag requests in multi-request batches.
++    """
++
++    model_config = ConfigDict(extra="forbid")
++
++    objective: str | None = Field(
++        default=None,
++        title="Objective",
++        description="Named reward objective for multi-objective checkpoints; None uses the native reward.",
++    )
++    label: str | None = Field(
++        default=None,
++        title="Label",
++        description="Optional label echoed on the matching sample set.",
++    )
++
++
++class SynFlowNetSampleInput(BaseToolInput):
++    """Input for the SynFlowNet sampling tool.
++
++    Attributes:
++        requests (list[SynFlowNetRequest]): Generation requests; each produces one
++            sample set of ``num_molecules_per_request`` molecules. A bare string
++            or list of strings is coerced to requests carrying those objectives;
++            an empty input yields a single default request.
++    """
++
++    requests: list[SynFlowNetRequest] = InputField(
++        default_factory=lambda: [SynFlowNetRequest()],
++        title="Requests",
++        description="Generation requests; each yields one sample set of molecules.",
++    )
++
++    @field_validator("requests", mode="before")
++    @classmethod
++    def normalize_requests(cls, value: Any) -> Any:
++        """Coerce a bare objective string, a list of strings, or empty input to requests."""
++        if value is None or value == []:
++            return [SynFlowNetRequest()]
++        items = value if isinstance(value, (list, tuple)) else [value]
++        return [{"objective": item} if isinstance(item, str) else item for item in items]
++
++
++class SynFlowNetSampleConfig(BaseConfig):
++    """Configuration for SynFlowNet molecule sampling.
++
++    Attributes:
++        model_checkpoint (str): Trained SynFlowNet GFlowNet checkpoint. ``"default"``
++            uses the checkpoint provisioned in the managed weights cache; any other
++            value is an explicit path to a ``.pt`` checkpoint.
++        num_molecules_per_request (int): Molecules to generate per request.
++        sampling_temperature (float): Inverse-temperature (beta) for the GFlowNet
++            policy; higher concentrates sampling on high-reward molecules, lower
++            broadens diversity.
++        random_action_prob (float): Probability of taking a uniform-random synthesis
++            action at each step, for extra exploration.
++        max_reaction_steps (int): Maximum number of synthesis actions per molecule
++            (trajectory length).
++        unique_molecules (bool): Deduplicate identical canonical SMILES within a
++            request (oversampling to still return the requested count where possible).
++        batch_size (int): Molecules sampled per GFlowNet forward pass; raise for
++            throughput, lower if out of GPU memory.
++        device (str): Device to run the model on.
++    """
++
++    model_checkpoint: str = ConfigField(
++        title="Model Checkpoint",
++        default=DEFAULT_CHECKPOINT,
++        description="'default' uses the provisioned checkpoint, or a path to a .pt SynFlowNet checkpoint.",
++        reload_on_change=True,
++    )
++    num_molecules_per_request: int = ConfigField(
++        title="Molecules Per Request",
++        default=64,
++        ge=1,
++        description="Number of molecules to generate per request.",
++    )
++    sampling_temperature: float = ConfigField(
++        title="Sampling Temperature",
++        default=32.0,
++        gt=0.0,
++        description="GFlowNet inverse-temperature (beta); higher favors high-reward molecules.",
++    )
++    random_action_prob: float = ConfigField(
++        title="Random Action Probability",
++        default=0.0,
++        ge=0.0,
++        le=1.0,
++        description="Probability of a uniform-random synthesis action per step, for exploration.",
++    )
++    max_reaction_steps: int = ConfigField(
++        title="Max Reaction Steps",
++        default=4,
++        ge=1,
++        description="Maximum synthesis actions per molecule (trajectory length).",
++    )
++    unique_molecules: bool = ConfigField(
++        title="Unique Molecules",
++        default=True,
++        description="Deduplicate identical canonical SMILES within a request.",
++    )
++    batch_size: int = ConfigField(
++        title="Batch Size",
++        default=64,
++        ge=1,
++        description="Molecules per GFlowNet forward pass; raise for throughput, lower if OOM.",
++    )
++    device: str = ConfigField(
++        title="Device",
++        default="cuda",
++        description="Device to run the model on",
++        include_in_key=False,
++    )
++
++    def remote_unsupported_reason(self, device: RemoteDevice) -> str | None:
++        """A user-supplied checkpoint path isn't present on a hosted worker."""
++        if self.model_checkpoint != DEFAULT_CHECKPOINT:
++            return (
++                f"model_checkpoint points to a local checkpoint not available on device='{device}'. "
++                "Use the provisioned 'default' checkpoint, or run locally with device='cuda'."
++            )
++        return None
++
++
++class SynFlowNetMoleculeMetrics(Metrics):
++    """Per-molecule metrics for a SynFlowNet-generated molecule.
++
++    Metrics documented in ``metric_spec``:
++        reward (float): GFlowNet task reward for the molecule under the checkpoint's
++            objective. Higher is better.
++        num_reactions (float): Number of synthesis reactions in the molecule's route.
++            Context for synthesizability, not a quality score.
++        qed (float): RDKit quantitative estimate of drug-likeness (0-1). Higher is
++            more drug-like.
++        molecular_weight (float): Molecular weight in g/mol. Context, not a score.
++    """
++
++    metric_spec: ClassVar[dict[str, MetricSpec]] = {
++        "reward": {
++            "availability": "always",
++            "type": "float",
++            "min": 0.0,
++            "max": None,
++            "better_values_are": "higher",
++        },
++        "num_reactions": {
++            "availability": "always",
++            "type": "float",
++            "min": 0.0,
++            "max": None,
++            "better_values_are": "context-dependent",
++        },
++        "qed": {
++            "availability": "when RDKit can compute QED for the molecule",
++            "type": "float",
++            "min": 0.0,
++            "max": 1.0,
++            "better_values_are": "higher",
++        },
++        "molecular_weight": {
++            "availability": "when RDKit can parse the molecule",
++            "type": "float",
++            "min": 0.0,
++            "max": None,
++            "unit": "g/mol",
++            "better_values_are": "context-dependent",
++        },
++    }
++    primary_metric: str | None = Field(
++        default="reward",
++        title="Primary Metric",
++        description="Headline metric used to rank molecules.",
++    )
++
++
++class SynFlowNetMolecule(BaseModel):
++    """One molecule generated by SynFlowNet, with its synthesis route and metrics.
++
++    Attributes:
++        smiles (str): Canonical SMILES of the generated molecule.
++        synthesis_route (list[str]): Ordered reaction templates applied to build the
++            molecule, as reported by the sampler (empty if unavailable).
++        building_blocks (list[str]): SMILES of the building blocks consumed by the
++            synthesis route (empty if unavailable).
++        metrics (SynFlowNetMoleculeMetrics): Per-molecule reward and property metrics.
++    """
++
++    model_config = ConfigDict(extra="forbid")
++
++    smiles: str = Field(title="SMILES", description="Canonical SMILES of the generated molecule")
++    synthesis_route: list[str] = Field(
++        default_factory=list,
++        title="Synthesis Route",
++        description="Ordered reaction templates applied to build the molecule",
++    )
++    building_blocks: list[str] = Field(
++        default_factory=list,
++        title="Building Blocks",
++        description="SMILES of the building blocks used in the synthesis route",
++    )
++    metrics: SynFlowNetMoleculeMetrics = Field(
++        default_factory=SynFlowNetMoleculeMetrics,
++        title="Metrics",
++        description="Per-molecule reward and property metrics.",
++    )
++
++
++class SynFlowNetSampleSet(BaseModel):
++    """All molecules generated for a single request, in sampling order.
++
++    Attributes:
++        molecules (list[SynFlowNetMolecule]): The molecules generated for one request.
++        objective (str | None): The request's objective, echoed back.
++        label (str | None): The request's label, echoed back.
++    """
++
++    model_config = ConfigDict(extra="forbid")
++
++    molecules: list[SynFlowNetMolecule] = Field(
++        title="Molecules",
++        description="Molecules generated for one request, in sampling order.",
++    )
++    objective: str | None = Field(
++        default=None,
++        title="Objective",
++        description="Objective of the request that produced these molecules.",
++    )
++    label: str | None = Field(
++        default=None,
++        title="Label",
++        description="Label of the request that produced these molecules.",
++    )
++
++    def __len__(self) -> int:
++        return len(self.molecules)
++
++    def __getitem__(self, index: int) -> SynFlowNetMolecule:
++        return self.molecules[index]
++
++    def __iter__(self) -> Iterator[SynFlowNetMolecule]:  # type: ignore[override]
++        return iter(self.molecules)
++
++
++class SynFlowNetSampleOutput(BaseToolOutput):
++    """Output of the SynFlowNet sampling tool.
++
++    Attributes:
++        sample_sets (list[SynFlowNetSampleSet]): One sample set per input request,
++            in input order.
++    """
++
++    sample_sets: list[SynFlowNetSampleSet] = Field(
++        title="Sample Sets",
++        description="One SynFlowNetSampleSet per input request, in input order.",
++    )
++
++    @property
++    def molecules(self) -> list[SynFlowNetMolecule]:
++        """All generated molecules across every sample set, in order."""
++        return [mol for sample_set in self.sample_sets for mol in sample_set.molecules]
++
++    @property
++    def smiles(self) -> list[str]:
++        """Canonical SMILES of every generated molecule, in order."""
++        return [mol.smiles for mol in self.molecules]
++
++    @property
++    def output_format_options(self) -> list[str]:
++        """Return the supported output format options."""
++        return ["smi", "csv", "json"]
++
++    @property
++    def output_format_default(self) -> str:
++        """Return the default output format."""
++        return "smi"
++
++    def _export_output(self, export_path: str | Path, file_format: str) -> None:
++        path = Path(export_path).with_suffix(f".{file_format}")
++
++        if file_format == "smi":
++            path.write_text("".join(f"{mol.smiles}\n" for mol in self.molecules))
++        elif file_format == "csv":
++            with open(path, "w", newline="") as f:
++                writer = csv.writer(f)
++                writer.writerow(["smiles", "objective", "reward", "num_reactions", "qed", "molecular_weight"])
++                for sample_set in self.sample_sets:
++                    for mol in sample_set.molecules:
++                        writer.writerow(
++                            [
++                                mol.smiles,
++                                sample_set.objective or "",
++                                mol.metrics.get("reward"),
++                                mol.metrics.get("num_reactions"),
++                                mol.metrics.get("qed"),
++                                mol.metrics.get("molecular_weight"),
++                            ]
++                        )
++        elif file_format == "json":
++            path.write_text(json.dumps(self.model_dump(mode="json"), indent=2))
++        else:
++            raise ValueError(f"Unsupported format: {file_format}")
++
++
++# ============================================================================
++# Tool Implementation
++# ============================================================================
++def example_input() -> Any:
++    """Minimal valid input for testing and examples."""
++    return SynFlowNetSampleInput(requests=[SynFlowNetRequest()])
++
++
++def _molecules_from_dicts(raw_molecules: list[dict[str, Any]]) -> list[SynFlowNetMolecule]:
++    """Build typed molecules from the standalone's per-molecule dicts."""
++    molecules: list[SynFlowNetMolecule] = []
++    for raw in raw_molecules:
++        metrics = raw.get("metrics", {})
++        molecules.append(
++            SynFlowNetMolecule(
++                smiles=raw["smiles"],
++                synthesis_route=raw.get("synthesis_route", []),
++                building_blocks=raw.get("building_blocks", []),
++                metrics=SynFlowNetMoleculeMetrics(**metrics),
++            )
++        )
++    return molecules
++
++
++@tool(
++    key="synflownet-sample",
++    label="SynFlowNet Molecule Sampling",
++    category="molecular_generation",
++    input_class=SynFlowNetSampleInput,
++    config_class=SynFlowNetSampleConfig,
++    output_class=SynFlowNetSampleOutput,
++    metrics_class=SynFlowNetMoleculeMetrics,
++    description="Generate synthesizable small molecules with a SynFlowNet GFlowNet",
++    uses_gpu=True,
++    device_count="1",
++    example_input=example_input,
++    iterable_input_fields=["requests"],
++    iterable_output_field="sample_sets",
++    max_chunk_size=1,
++    cacheable=True,
++    stochastic=True,
++)
++def run_synflownet_sample(
++    inputs: SynFlowNetSampleInput,
++    config: SynFlowNetSampleConfig,
++    instance: Any = None,
++) -> SynFlowNetSampleOutput:
++    """Generate synthesizable small molecules with a SynFlowNet GFlowNet.
++
++    Args:
++        inputs (SynFlowNetSampleInput): Generation requests, one sample set produced per request.
++        config (SynFlowNetSampleConfig): Sampling configuration (checkpoint, count, temperature, etc.).
++        instance (Any): Optional ToolInstance for subprocess execution.
++
++    Returns:
++        SynFlowNetSampleOutput: One SynFlowNetSampleSet per request, each holding the
++            generated molecules with their synthesis routes and metrics.
++    """
++    logger.debug("Using local venv for synflownet sampling")
++
++    base_seed = config.seed if config.seed is not None else config.get_random_int()
++    # Advances across every dispatch (requests x chunks) so duplicate requests diverge.
++    dispatch_idx = 0
++
++    sample_sets: list[SynFlowNetSampleSet] = []
++    for request in progress_bar(
++        inputs.requests,
++        desc="SynFlowNet sampling",
++        unit="request",
++        total=len(inputs.requests),
++    ):
++        collected: list[SynFlowNetMolecule] = []
++        seen_smiles: set[str] = set()
++        target = config.num_molecules_per_request
++        # Cap total dispatches so uniqueness filtering on a low-diversity checkpoint
++        # can't loop forever; without dedup this is exactly ceil(target / batch_size).
++        max_dispatches = max(1, -(-target // config.batch_size)) * (4 if config.unique_molecules else 1)
++        dispatches = 0
++        while len(collected) < target and dispatches < max_dispatches:
++            chunk = min(config.batch_size, target - len(collected))
++            input_dict = {
++                "operation": "sample",
++                "model_checkpoint": config.model_checkpoint,
++                "objective": request.objective,
++                "num_molecules": chunk,
++                "sampling_temperature": config.sampling_temperature,
++                "random_action_prob": config.random_action_prob,
++                "max_reaction_steps": config.max_reaction_steps,
++                "seed": base_seed + dispatch_idx,
++                "device": config.device,
++                "verbose": config.verbose,
++            }
++            result = ToolInstance.dispatch("synflownet", input_dict, instance=instance, config=config)
++            for mol in _molecules_from_dicts(result["molecules"]):
++                if config.unique_molecules and mol.smiles in seen_smiles:
++                    continue
++                seen_smiles.add(mol.smiles)
++                collected.append(mol)
++            dispatch_idx += 1
++            dispatches += 1
++
++        if len(collected) < target:
++            logger.warning(
++                "SynFlowNet returned %d of %d requested molecules for objective=%r after %d dispatches.",
++                len(collected),
++                target,
++                request.objective,
++                dispatches,
++            )
++        molecules = collected[:target]
++        sample_sets.append(
++            SynFlowNetSampleSet(molecules=molecules, objective=request.objective, label=request.label)
++        )
++
++    return SynFlowNetSampleOutput(sample_sets=sample_sets)
+diff --git a/tests/molecular_generation_tests/__init__.py b/tests/molecular_generation_tests/__init__.py
+new file mode 100644
+index 00000000..e69de29b
+diff --git a/tests/molecular_generation_tests/test_synflownet_sample.py b/tests/molecular_generation_tests/test_synflownet_sample.py
+new file mode 100644
+index 00000000..79c561f7
+--- /dev/null
++++ b/tests/molecular_generation_tests/test_synflownet_sample.py
+@@ -0,0 +1,205 @@
++"""tests/molecular_generation_tests/test_synflownet_sample.py.
++
++Tests for SynFlowNet synthesizable-molecule sampling.
++"""
++
++import csv
++import json
++from pathlib import Path
++
++import pytest
++
++from proto_tools.tools.molecular_generation import (
++    SynFlowNetMolecule,
++    SynFlowNetMoleculeMetrics,
++    SynFlowNetSampleConfig,
++    SynFlowNetSampleInput,
++    SynFlowNetSampleOutput,
++    SynFlowNetSampleSet,
++    run_synflownet_sample,
++)
++from tests.conftest import benchmark_twice
++
++
++def _molecule(smiles: str, reward: float) -> SynFlowNetMolecule:
++    """Build a molecule with populated metrics for export tests."""
++    return SynFlowNetMolecule(
++        smiles=smiles,
++        metrics=SynFlowNetMoleculeMetrics(
++            reward=reward,
++            num_reactions=2,
++            qed=0.6,
++            molecular_weight=46.0,
++        ),
++    )
++
++
++def _two_set_output() -> SynFlowNetSampleOutput:
++    """Two sample sets, each with two molecules, built without running the model."""
++    return SynFlowNetSampleOutput(
++        sample_sets=[
++            SynFlowNetSampleSet(
++                molecules=[_molecule("CCO", 1.2), _molecule("CCC", 0.9)],
++                objective="seh",
++            ),
++            SynFlowNetSampleSet(
++                molecules=[_molecule("c1ccccc1", 1.5), _molecule("CCN", 0.4)],
++                objective=None,
++            ),
++        ]
++    )
++
++
++# normalize_requests before-validator
++
++
++def test_normalize_requests_bare_string_becomes_single_request() -> None:
++    """A bare objective string coerces to one request carrying that objective."""
++    inputs = SynFlowNetSampleInput(requests="seh")  # type: ignore[arg-type]
++
++    assert len(inputs.requests) == 1
++    assert inputs.requests[0].objective == "seh"
++
++
++def test_normalize_requests_list_of_strings_becomes_one_request_each() -> None:
++    """A list of objective strings yields one request per entry, preserving order."""
++    inputs = SynFlowNetSampleInput(requests=["seh", "qed"])  # type: ignore[list-item]
++
++    assert [req.objective for req in inputs.requests] == ["seh", "qed"]
++
++
++@pytest.mark.parametrize("value", [None, []])
++def test_normalize_requests_empty_input_yields_one_default_request(value: object) -> None:
++    """None or an empty list collapses to a single default (native-reward) request."""
++    inputs = SynFlowNetSampleInput(requests=value)  # type: ignore[arg-type]
++
++    assert len(inputs.requests) == 1
++    assert inputs.requests[0].objective is None
++    assert inputs.requests[0].label is None
++
++
++# remote_unsupported_reason custom method
++
++
++def test_remote_unsupported_reason_allows_default_checkpoint() -> None:
++    """The provisioned 'default' checkpoint is available on every hosted worker."""
++    config = SynFlowNetSampleConfig(model_checkpoint="default")
++
++    assert config.remote_unsupported_reason("modal") is None
++    assert config.remote_unsupported_reason("proto") is None
++
++
++@pytest.mark.parametrize("device", ["modal", "proto"])
++def test_remote_unsupported_reason_blocks_local_checkpoint(device: str) -> None:
++    """A user-supplied checkpoint path cannot be served remotely, so a reason is returned."""
++    config = SynFlowNetSampleConfig(model_checkpoint="local/models/my_checkpoint.pt")
++
++    reason = config.remote_unsupported_reason(device)  # type: ignore[arg-type]
++    assert reason is not None
++    assert device in reason
++
++
++# Output flattening and export round-trip (no model execution)
++
++
++def test_output_molecules_and_smiles_flatten_across_sample_sets() -> None:
++    """The output flattens molecules and SMILES across every sample set, in order."""
++    output = _two_set_output()
++
++    assert len(output.molecules) == 4
++    assert output.smiles == ["CCO", "CCC", "c1ccccc1", "CCN"]
++
++
++def test_output_exports_smi_as_one_smiles_per_line(tmp_path: Path) -> None:
++    """The .smi export writes exactly one SMILES per molecule, one per line."""
++    output = _two_set_output()
++
++    output.export("sample", tmp_path, file_format="smi")
++
++    lines = (tmp_path / "sample.smi").read_text().splitlines()
++    assert lines == ["CCO", "CCC", "c1ccccc1", "CCN"]
++
++
++def test_output_exports_csv_with_header_and_one_row_per_molecule(tmp_path: Path) -> None:
++    """The .csv export has the documented header and one row per molecule with its metrics."""
++    output = _two_set_output()
++
++    output.export("sample", tmp_path, file_format="csv")
++
++    with (tmp_path / "sample.csv").open() as handle:
++        rows = list(csv.DictReader(handle))
++
++    assert [row["smiles"] for row in rows] == ["CCO", "CCC", "c1ccccc1", "CCN"]
++    assert rows[0]["objective"] == "seh"
++    assert rows[2]["objective"] == ""  # second set's objective is None -> empty string
++    assert rows[0]["reward"] == "1.2"
++    assert rows[0]["qed"] == "0.6"
++    assert rows[0]["molecular_weight"] == "46.0"
++
++
++def test_output_exports_valid_json_round_trip(tmp_path: Path) -> None:
++    """The .json export is valid JSON that preserves sample-set structure and metrics."""
++    output = _two_set_output()
++
++    output.export("sample", tmp_path, file_format="json")
++
++    data = json.loads((tmp_path / "sample.json").read_text())
++    assert len(data["sample_sets"]) == 2
++    assert data["sample_sets"][0]["objective"] == "seh"
++    assert data["sample_sets"][0]["molecules"][0]["smiles"] == "CCO"
++    assert data["sample_sets"][0]["molecules"][0]["metrics"]["reward"] == 1.2
++
++
++def test_output_export_rejects_unsupported_format(tmp_path: Path) -> None:
++    """An unsupported export format is rejected rather than silently written."""
++    output = _two_set_output()
++
++    with pytest.raises(ValueError):
++        output.export("sample", tmp_path, file_format="pdb")
++
++
++# SynFlowNetSampleSet sequence protocol
++
++
++def test_sample_set_behaves_as_a_sequence_over_molecules() -> None:
++    """A sample set supports len, indexing, and iteration over its molecules."""
++    molecules = [_molecule("CCO", 1.2), _molecule("c1ccccc1", 1.5)]
++    sample_set = SynFlowNetSampleSet(molecules=molecules, objective="seh")
++
++    assert len(sample_set) == 2
++    assert sample_set[0] is molecules[0]
++    assert sample_set[1].smiles == "c1ccccc1"
++    assert [mol.smiles for mol in sample_set] == ["CCO", "c1ccccc1"]
++
++
++# Integration (requires GPU + trained checkpoint)
++
++
++@pytest.mark.uses_gpu
++def test_synflownet_sample_basic_execution() -> None:
++    """End-to-end sampling returns one populated sample set for a default request."""
++    inputs = SynFlowNetSampleInput()
++    config = SynFlowNetSampleConfig(num_molecules_per_request=4, device="cuda")
++
++    result = run_synflownet_sample(inputs, config)
++
++    assert result.success
++    assert result.tool_id == "synflownet-sample"
++    assert len(result.sample_sets) == 1
++    assert all(mol.smiles for mol in result.molecules)
++
++
++@pytest.mark.benchmark("synflownet-sample")
++@pytest.mark.slow
++@pytest.mark.uses_gpu
++def test_synflownet_sample_benchmark(request: pytest.FixtureRequest) -> None:
++    """Benchmark synflownet-sample generating 64 molecules from the default checkpoint (cold + warm)."""
++    inputs = SynFlowNetSampleInput()
++    config = SynFlowNetSampleConfig(num_molecules_per_request=64, batch_size=64, seed=0)
++
++    result = benchmark_twice(request, "synflownet", lambda: run_synflownet_sample(inputs=inputs, config=config))
++
++    assert len(result.sample_sets) == 1
++    assert result.sample_sets[0].molecules, "Should generate at least one molecule"
++    for molecule in result.molecules:
++        assert molecule.smiles, "Generated molecule should have a non-empty SMILES"
+-- 
+2.43.0
+

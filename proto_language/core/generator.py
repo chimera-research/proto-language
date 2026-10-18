@@ -67,6 +67,9 @@ class Generator(ABC):
         batch_size (int): Number of sequences to generate per batch.
         input_type (GeneratorInputType): Required classvar; the kind of starting input the generator consumes.
         allows_empty_starting_sequence (bool): Whether the generator can initialize a length-only target segment.
+        generates_ligands (bool): Whether the generator produces ligand (SMILES) proposals and may therefore
+            be assigned to a ligand segment. Defaults to ``False``, so ordinary sequence generators keep
+            rejecting ligand segments; de novo ligand generators opt in by setting it ``True``.
 
     Examples:
         Use a concrete subclass (never instantiate ``Generator`` directly):
@@ -83,6 +86,7 @@ class Generator(ABC):
 
     input_type: ClassVar[GeneratorInputType]
     allows_empty_starting_sequence: ClassVar[bool] = False
+    generates_ligands: ClassVar[bool] = False
 
     @abstractmethod
     def __init__(self) -> None:
@@ -130,9 +134,9 @@ class Generator(ABC):
 
         Raises:
             ValueError: If the iterable is empty, contains duplicate Segment
-                instances, any segment is a ligand, any sequence type is
-                unsupported, or tied segments disagree on type, length, or
-                valid characters.
+                instances, any segment is a ligand while the generator does not
+                set ``generates_ligands=True``, any sequence type is unsupported,
+                or tied segments disagree on type, length, or valid characters.
         """
         normalized = (segments,) if isinstance(segments, Segment) else tuple(segments)
         if not normalized:
@@ -144,9 +148,10 @@ class Generator(ABC):
             )
 
         for segment in normalized:
-            if segment.is_ligand:
+            if segment.is_ligand and not self.generates_ligands:
                 raise ValueError(
-                    f"Cannot assign generator to ligand segment '{segment.label}'. Ligand segments cannot be mutated."
+                    f"Cannot assign generator to ligand segment '{segment.label}'. Ligand segments cannot be mutated "
+                    f"unless the generator declares generates_ligands=True (a de novo ligand generator)."
                 )
 
         supported_types = self._spec.supported_sequence_types
@@ -312,7 +317,11 @@ class Generator(ABC):
         if not segment.proposal_sequences:
             raise RuntimeError(f"Segment '{segment.label or 'unlabeled'}' has an empty proposal_sequences pool.")
 
-        if self.input_type == GeneratorInputType.STARTING_SEQUENCE and not segment.proposals_populated:
+        if (
+            self.input_type == GeneratorInputType.STARTING_SEQUENCE
+            and not segment.proposals_populated
+            and not self.allows_empty_starting_sequence
+        ):
             raise RuntimeError(
                 f"{self.__class__.__name__} requires a starting sequence on segment "
                 f"{(segment.label or 'unlabeled')!r}. Set segment.input_sequence, or place a prior "
