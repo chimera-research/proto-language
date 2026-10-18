@@ -58,6 +58,9 @@ def test_build_is_deterministic(lock: Lock) -> None:
     upstream.toolkits["random_nucleotide"] = ToolkitUpstream(toolkit="random_nucleotide", category="mutagenesis")
     upstream.add("random_nucleotide", UpstreamSource.pypi("numpy", "==2.0.0"))
     again = build_lock(REPO_ROOT, config, upstream)
+    before = {(a.kind, a.key): a.digest for a in lock.artifacts}
+    moved = sorted(k for k, a in ((k, a) for k, a in again.index().items()) if before.get(k) != a.digest)
+    assert moved == []
     assert again.release_digest == lock.release_digest
 
 
