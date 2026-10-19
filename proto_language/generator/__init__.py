@@ -31,6 +31,10 @@ from proto_language.generator.rfdiffusion_mpnn_binder_generator import (
     RFdiffusionMPNNBinderGenerator,
     RFdiffusionMPNNBinderGeneratorConfig,
 )
+from proto_language.generator.drugflow_generator import (
+    DrugFlowGenerator,
+    DrugFlowGeneratorConfig,
+)
 from proto_language.generator.semigreedy_mutation_generator import (
     SemigreedyMutationGenerator,
     SemigreedyMutationGeneratorConfig,
@@ -85,4 +89,7 @@ __all__ = [
     # Binder design generators
     "RFdiffusionMPNNBinderGenerator",
     "RFdiffusionMPNNBinderGeneratorConfig",
+    # Molecular generation (ligand) generators
+    "DrugFlowGenerator",
+    "DrugFlowGeneratorConfig",
 ]

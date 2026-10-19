@@ -1,0 +1,1596 @@
+From 51ba015c7c4b7751304d19ab77f3ac65f645c17c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 19 Oct 2026 06:45:40 +0000
+Subject: [PATCH] feat: add DrugFlow pocket-conditioned molecule generation
+ tool
+
+Add the `drugflow` toolkit to the `molecular_generation` category, wrapping
+DrugFlow (LPDI-EPFL; flow matching + discrete Markov bridges for structure-based
+drug design) as the `drugflow-generate` tool: Input/Config/Output/Metrics,
+standalone env (clones the upstream repo and shells out to src/generate.py;
+auto-downloads the public Zenodo checkpoints, so no training or manual weight
+provisioning is required), README/cite.bib/license.yaml(MIT)/links.yaml, example
+notebook, tests (incl. a device-agnostic benchmark), and the full export chain.
+Also add the Modal deployment (service + manifest wiring + regenerated tool_map)
+and list the category/toolkit in the README catalog.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01AfRBurRbmQ6WtVNziVX6C1
+---
+ README.md                                     |   2 +
+ proto_tools/modal/manifest.py                 |   4 +
+ .../drugflow_deployment/README.md             |  16 +
+ .../drugflow_deployment/drugflow_service.py   |  94 ++++
+ proto_tools/modal/tool_map.py                 |   1 +
+ proto_tools/tools/__init__.py                 |  19 +
+ .../tools/molecular_generation/__init__.py    |  21 +
+ .../molecular_generation/drugflow/README.md   |  53 +++
+ .../molecular_generation/drugflow/__init__.py |  21 +
+ .../molecular_generation/drugflow/cite.bib    |  10 +
+ .../drugflow/drugflow_generate.py             | 418 ++++++++++++++++++
+ .../drugflow/examples/example.ipynb           | 198 +++++++++
+ .../drugflow/license.yaml                     |   8 +
+ .../molecular_generation/drugflow/links.yaml  |   7 +
+ .../drugflow/standalone/env_vars.txt          |   5 +
+ .../drugflow/standalone/inference.py          | 179 ++++++++
+ .../drugflow/standalone/python_version.txt    |   1 +
+ .../drugflow/standalone/requirements.txt      |  15 +
+ .../drugflow/standalone/setup.sh              |  52 +++
+ tests/molecular_generation_tests/__init__.py  |   1 +
+ .../test_drugflow_generate.py                 | 235 ++++++++++
+ 21 files changed, 1360 insertions(+)
+ create mode 100644 proto_tools/modal/molecular_generation/drugflow_deployment/README.md
+ create mode 100644 proto_tools/modal/molecular_generation/drugflow_deployment/drugflow_service.py
+ create mode 100644 proto_tools/tools/molecular_generation/__init__.py
+ create mode 100644 proto_tools/tools/molecular_generation/drugflow/README.md
+ create mode 100644 proto_tools/tools/molecular_generation/drugflow/__init__.py
+ create mode 100644 proto_tools/tools/molecular_generation/drugflow/cite.bib
+ create mode 100644 proto_tools/tools/molecular_generation/drugflow/drugflow_generate.py
+ create mode 100644 proto_tools/tools/molecular_generation/drugflow/examples/example.ipynb
+ create mode 100644 proto_tools/tools/molecular_generation/drugflow/license.yaml
+ create mode 100644 proto_tools/tools/molecular_generation/drugflow/links.yaml
+ create mode 100644 proto_tools/tools/molecular_generation/drugflow/standalone/env_vars.txt
+ create mode 100644 proto_tools/tools/molecular_generation/drugflow/standalone/inference.py
+ create mode 100644 proto_tools/tools/molecular_generation/drugflow/standalone/python_version.txt
+ create mode 100644 proto_tools/tools/molecular_generation/drugflow/standalone/requirements.txt
+ create mode 100644 proto_tools/tools/molecular_generation/drugflow/standalone/setup.sh
+ create mode 100644 tests/molecular_generation_tests/__init__.py
+ create mode 100644 tests/molecular_generation_tests/test_drugflow_generate.py
+
+diff --git a/README.md b/README.md
+index f5c3b109..8bfbc00e 100644
+--- a/README.md
++++ b/README.md
+@@ -127,6 +127,8 @@ for instructions related to account setup, deploying a tool, and costs, or the [
+ └── <a href="proto_tools/tools/masked_models/minerva/">minerva/</a>
+ <a href="proto_tools/tools/molecular_docking/">molecular_docking/</a>              # Protein-ligand binding pose prediction
+ └── <a href="proto_tools/tools/molecular_docking/vina/">vina/</a>
++<a href="proto_tools/tools/molecular_generation/">molecular_generation/</a>           # De novo small-molecule (ligand) generation
++└── <a href="proto_tools/tools/molecular_generation/drugflow/">drugflow/</a>
+ <a href="proto_tools/tools/mutagenesis/">mutagenesis/</a>                    # Random sequence mutagenesis
+ ├── <a href="proto_tools/tools/mutagenesis/random_nucleotide/">random_nucleotide/</a>
+ └── <a href="proto_tools/tools/mutagenesis/random_protein/">random_protein/</a>
+diff --git a/proto_tools/modal/manifest.py b/proto_tools/modal/manifest.py
+index 47b78409..5a08f98a 100644
+--- a/proto_tools/modal/manifest.py
++++ b/proto_tools/modal/manifest.py
+@@ -48,6 +48,7 @@ APP_BUCKETS: dict[str, list[str]] = {
+     "proto-tools-splice-transformer": ["SpliceTransformerService"],
+     "proto-tools-spliceai": ["SpliceAIService"],
+     "proto-tools-spliceai2": ["SpliceAI2Service"],
++    "proto-tools-drugflow": ["DrugFlowService"],
+     # CPU services — one app each, so deploying one does not build the others.
+     "proto-tools-ccd-lookup": ["CcdLookupService"],
+     "proto-tools-crispr-tracr-rna": ["CrisprTracrRNAService"],
+@@ -174,6 +175,7 @@ SERVICE_TIERS: dict[str, str] = {
+     "SpliceAIService": "long",
+     "SpliceAI2Service": "long",
+     "SpliceTransformerService": "medium",
++    "DrugFlowService": "extended",
+     "StructureMetricsService": "fast",
+     "TMalignService": "fast",
+     "USalignService": "fast",
+@@ -271,6 +273,7 @@ GPU_SERVICES: frozenset[str] = frozenset(
+         "SpliceAIService",
+         "SpliceAI2Service",
+         "SpliceTransformerService",
++        "DrugFlowService",
+     }
+ )
+ 
+@@ -351,6 +354,7 @@ SERVICE_TO_MODULE: dict[str, str] = {
+     "SpliceAIService": "proto_tools.modal.rna_splicing.spliceai_deployment.spliceai_service",
+     "SpliceAI2Service": "proto_tools.modal.rna_splicing.spliceai2_deployment.spliceai2_service",
+     "SpliceTransformerService": "proto_tools.modal.rna_splicing.splice_transformer_deployment.splice_transformer_service",
++    "DrugFlowService": "proto_tools.modal.molecular_generation.drugflow_deployment.drugflow_service",
+     "StructureMetricsService": (
+         "proto_tools.modal.structure_scoring.structure_metrics_deployment.structure_metrics_service"
+     ),
+diff --git a/proto_tools/modal/molecular_generation/drugflow_deployment/README.md b/proto_tools/modal/molecular_generation/drugflow_deployment/README.md
+new file mode 100644
+index 00000000..35d97dee
+--- /dev/null
++++ b/proto_tools/modal/molecular_generation/drugflow_deployment/README.md
+@@ -0,0 +1,16 @@
++# DrugFlow deployment
++
++Modal deployment for the [`drugflow` toolkit](../../../tools/molecular_generation/drugflow/README.md)
++(`drugflow-generate`).
++
++## Checkpoints
++
++DrugFlow's checkpoints are public (Zenodo record 14919171) and are downloaded into the Modal
++weights volume (`PROTO_MODEL_CACHE`, mounted at `/weights`) when the standalone environment is
++built on the first request — no manual provisioning is required. The build-time warmup only bakes
++the tool source into the image.
++
++## Benchmarks
++
++_Not yet recorded. Deployment benchmark tables here are generated by
++`pytest --benchmark --use-modal` once the service has been deployed._
+diff --git a/proto_tools/modal/molecular_generation/drugflow_deployment/drugflow_service.py b/proto_tools/modal/molecular_generation/drugflow_deployment/drugflow_service.py
+new file mode 100644
+index 00000000..f658b3d8
+--- /dev/null
++++ b/proto_tools/modal/molecular_generation/drugflow_deployment/drugflow_service.py
+@@ -0,0 +1,94 @@
++"""DrugFlow Modal service.
++
++Delegates to the proto-tools ``run_drugflow_generate`` function for parameter validation,
++environment setup, and model inference. DrugFlow's checkpoints are public (Zenodo record 14919171)
++and are downloaded into the ``PROTO_MODEL_CACHE`` volume when the standalone env is built; the
++build-time warmup bakes the tool source into the image, and the env (with its DrugFlow checkout and
++checkpoints) is provisioned on the first request.
++"""
++
++from typing import Any
++
++import modal
++
++from proto_tools.modal.app import HF_TOKEN_SECRET, MODEL_CACHE, SCALEDOWN_WINDOW, SERVICE_RETRIES, get_app_for_service
++from proto_tools.modal.base_images import GPU_BASE, with_proto_tools
++from proto_tools.modal.gpu_profiles import GPU_DEFAULT
++from proto_tools.modal.manifest import SERVICE_MODAL_TIMEOUTS
++from proto_tools.modal.registry import register_tools
++from proto_tools.modal.utils import RUNTIME_ENV, ensure_gpu_ready, env_for, run_tool_call
++
++
++def _warmup() -> None:
++    """Deploy-time: bake the tool source into the image (weights download on env build)."""
++    from proto_tools.tools.molecular_generation.drugflow.drugflow_generate import (  # noqa: F401
++        run_drugflow_generate,
++    )
++
++
++image = (
++    with_proto_tools(GPU_BASE)
++    .env(env_for())
++    .run_function(
++        _warmup, gpu=GPU_DEFAULT, volumes={"/weights": MODEL_CACHE}, secrets=[HF_TOKEN_SECRET], include_source=False
++    )
++    .env(RUNTIME_ENV)
++)
++
++
++app = get_app_for_service("DrugFlowService")
++
++
++@app.cls(
++    include_source=False,
++    image=image,
++    gpu=GPU_DEFAULT,
++    scaledown_window=SCALEDOWN_WINDOW,
++    volumes={"/weights": MODEL_CACHE},
++    timeout=SERVICE_MODAL_TIMEOUTS["DrugFlowService"],
++    retries=SERVICE_RETRIES,
++    secrets=[HF_TOKEN_SECRET],
++)
++@register_tools({"drugflow-generate": "generate"})
++class DrugFlowService:
++    """Modal service for DrugFlow pocket-conditioned molecule generation."""
++
++    @modal.enter()
++    def setup(self) -> None:
++        """Start a persistent worker so the DrugFlow env stays provisioned across requests."""
++        ensure_gpu_ready("drugflow")
++        from proto_tools.utils.tool_instance import ToolInstance
++
++        self._persist_ctx = ToolInstance.persist_tool("drugflow")
++        self.instance = self._persist_ctx.__enter__()
++
++    @modal.exit()
++    def teardown(self) -> None:
++        """Close the persistent worker context manager on container shutdown."""
++        self._persist_ctx.__exit__(None, None, None)
++
++    @modal.method()
++    def generate(self, input_dict: dict[str, Any], config_dict: dict[str, Any]) -> dict[str, Any]:
++        """Generate pocket-conditioned 3D molecules with DrugFlow.
++
++        Args:
++            input_dict (dict[str, Any]): Mapping of input names to their serialized values.
++            config_dict (dict[str, Any]): Mapping of configuration parameter names to values.
++
++        Returns:
++            dict[str, Any]: One generation set of molecules per input protein.
++        """
++        from proto_tools.tools.molecular_generation.drugflow.drugflow_generate import (
++            DrugFlowGenerateConfig,
++            DrugFlowGenerateInput,
++            run_drugflow_generate,
++        )
++
++        return run_tool_call(
++            run_drugflow_generate,
++            DrugFlowGenerateInput,
++            DrugFlowGenerateConfig,
++            input_dict,
++            config_dict,
++            instance=self.instance,
++        )
+diff --git a/proto_tools/modal/tool_map.py b/proto_tools/modal/tool_map.py
+index 9b463da7..2316128d 100644
+--- a/proto_tools/modal/tool_map.py
++++ b/proto_tools/modal/tool_map.py
+@@ -40,6 +40,7 @@ TOOL_MAP: dict[str, ToolEntry] = {
+     "codonfm-sample": ToolEntry("proto-tools-codonfm", "CodonFMService", "sample", True),
+     "codonfm-score": ToolEntry("proto-tools-codonfm", "CodonFMService", "score", True),
+     "crispr-tracr-rna": ToolEntry("proto-tools-crispr-tracr-rna", "CrisprTracrRNAService", "crispr_tracr_rna", False),
++    "drugflow-generate": ToolEntry("proto-tools-drugflow", "DrugFlowService", "generate", True),
+     "dssp-secondary-structure": ToolEntry("proto-tools-dssp", "DSSPService", "compute", False),
+     "enformer-prediction": ToolEntry("proto-tools-enformer", "EnformerService", "predict", True),
+     "esm-if1-sample": ToolEntry("proto-tools-esmif1", "ESMIF1Service", "sample", True),
+diff --git a/proto_tools/tools/__init__.py b/proto_tools/tools/__init__.py
+index 29516eec..e6b14791 100644
+--- a/proto_tools/tools/__init__.py
++++ b/proto_tools/tools/__init__.py
+@@ -453,6 +453,17 @@ from proto_tools.tools.molecular_docking import (
+     run_vina_docking,
+ )
+ 
++# Molecular generation tools
++from proto_tools.tools.molecular_generation import (
++    DrugFlowGenerateConfig,
++    DrugFlowGenerateInput,
++    DrugFlowGenerateOutput,
++    DrugFlowGenerationSet,
++    DrugFlowMolecule,
++    DrugFlowMoleculeMetrics,
++    run_drugflow_generate,
++)
++
+ # Mutagenesis tools
+ from proto_tools.tools.mutagenesis import (
+     RandomNucleotideSample,
+@@ -1881,6 +1892,14 @@ __all__ = [
+     "VinaReferenceLigandBox",
+     "VinaSearchBox",
+     "run_vina_docking",
++    # Molecular generation - DrugFlow
++    "DrugFlowGenerateConfig",
++    "DrugFlowGenerateInput",
++    "DrugFlowGenerateOutput",
++    "DrugFlowGenerationSet",
++    "DrugFlowMolecule",
++    "DrugFlowMoleculeMetrics",
++    "run_drugflow_generate",
+     # RNA splicing - SpliceTransformer
+     "run_splice_transformer",
+     "SpliceTransformerInput",
+diff --git a/proto_tools/tools/molecular_generation/__init__.py b/proto_tools/tools/molecular_generation/__init__.py
+new file mode 100644
+index 00000000..c65eca3e
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/__init__.py
+@@ -0,0 +1,21 @@
++"""Molecular generation models for de novo design of small molecules."""
++
++from proto_tools.tools.molecular_generation.drugflow import (
++    DrugFlowGenerateConfig,
++    DrugFlowGenerateInput,
++    DrugFlowGenerateOutput,
++    DrugFlowGenerationSet,
++    DrugFlowMolecule,
++    DrugFlowMoleculeMetrics,
++    run_drugflow_generate,
++)
++
++__all__ = [
++    "DrugFlowGenerateConfig",
++    "DrugFlowGenerateInput",
++    "DrugFlowGenerateOutput",
++    "DrugFlowGenerationSet",
++    "DrugFlowMolecule",
++    "DrugFlowMoleculeMetrics",
++    "run_drugflow_generate",
++]
+diff --git a/proto_tools/tools/molecular_generation/drugflow/README.md b/proto_tools/tools/molecular_generation/drugflow/README.md
+new file mode 100644
+index 00000000..8d226b9d
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/drugflow/README.md
+@@ -0,0 +1,53 @@
++<a href="https://bio-pro.mintlify.app/tools/molecular-generation/drugflow"><img align="right" src="https://img.shields.io/badge/View_Docs-046e7a?style=flat-square&logo=readthedocs&logoColor=white" alt="View Docs"></a><a href="examples/example.ipynb"><img align="right" src="https://img.shields.io/badge/Example_Notebook-2e7d32?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0yIDNoNmE0IDQgMCAwIDEgNCA0djE0YTMgMyAwIDAgMC0zLTNIMnoiLz48cGF0aCBkPSJNMjIgM2gtNmE0IDQgMCAwIDAtNCA0djE0YTMgMyAwIDAgMSAzLTNoN3oiLz48L3N2Zz4=" alt="Example Notebook"></a><img align="right" src="https://img.shields.io/badge/Use_on_Proto-coming_soon-6c5ce7?style=flat-square&labelColor=6c5ce7&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwb2x5Z29uIHBvaW50cz0iMTMgMiAzIDE0IDEyIDE0IDExIDIyIDIxIDEwIDEyIDEwIDEzIDIiLz48L3N2Zz4=&logoColor=white" alt="Use on Proto (coming soon)">
++
++# DrugFlow
++
++![DrugFlow](https://proto-bio.github.io/proto-assets/images/tool/drugflow/hero.png)
++
++> [!NOTE]
++> **License:** DrugFlow is open source and free for academic and commercial use under an MIT license. Please refer to [the license](https://github.com/LPDI-EPFL/DrugFlow/blob/main/LICENSE) for full terms. Trained checkpoints are published publicly on Zenodo and are auto-downloaded during setup, so no user training is required.
++
++## Overview
++
++[DrugFlow](https://github.com/LPDI-EPFL/DrugFlow) is a generative model for structure-based drug design that generates 3D small molecules inside a target protein pocket. Given a protein structure and a reference ligand that defines the pocket, the model proposes novel ligands with explicit 3D poses, each returned as canonical SMILES and an SDF mol block. This toolkit wraps the upstream model and samples pocket-conditioned molecules on GPU, returning one generation set per target protein, with each molecule carrying property metrics (QED, molecular weight, and heavy-atom count) alongside its generated pose.
++
++## Background
++
++DrugFlow ([Schneuing et al., 2025](https://arxiv.org/abs/2508.17815), ICLR 2025) integrates continuous flow matching with discrete Markov bridges to learn the chemical, geometric, and physical aspects of 3D protein-ligand data jointly. Flow matching transports a simple prior to the data distribution over continuous atomic coordinates, while discrete Markov bridges model categorical variables such as atom and bond types; together they let the model generate a complete molecule, geometry and chemistry at once, rather than placing atoms one at a time.
++
++Generation is pocket-conditioned: the model is given a protein structure and a reference ligand whose neighborhood defines the binding pocket, and it samples ligands that fit that pocket in three dimensions. Because the output is a posed molecule rather than only a SMILES string, each candidate arrives with a hypothesis for how it sits in the target, ready for downstream docking, scoring, or refinement. The upstream release also provides a confidence head that flags out-of-distribution samples, a preference-alignment variant that steers sampling toward more desirable metric values, and a FlexFlow variant that jointly samples protein side-chain angles to model receptor flexibility.
++
++### Learning Resources
++
++- [DrugFlow repository](https://github.com/LPDI-EPFL/DrugFlow) - source code, generation scripts, and checkpoint download links.
++- [DrugFlow paper](https://arxiv.org/abs/2508.17815) (Schneuing et al., ICLR 2025) - the method, multi-domain distribution learning, and benchmark results.
++- [DrugFlow checkpoints on Zenodo](https://zenodo.org/records/14919171) - the public trained weights this toolkit downloads automatically.
++
++## Tools
++
++### DrugFlow Molecule Generation (`drugflow-generate`)
++
++Generates 3D small molecules conditioned on each target protein pocket, producing one generation set per protein. Each target is defined by a protein structure paired one-to-one with a reference ligand (an SDF block or `.sdf` path) whose neighborhood fixes the pocket; a single protein and reference are coerced into one-element lists. Every generated molecule is returned with its canonical SMILES, 3D pose SDF, and per-molecule property metrics. Import the entry points with `from proto_tools import run_drugflow_generate, DrugFlowGenerateInput, DrugFlowGenerateConfig`.
++
++#### Applications
++
++Use this tool to propose novel, pocket-aware ligands for a target of interest, to build a diverse candidate library for a known binding site, or to seed downstream docking, scoring, and filtering workflows with structures that already carry a plausible 3D binding pose. Because generation is conditioned on an explicit pocket, it is well suited to hit finding against a resolved or modeled receptor, to scaffold exploration around a known reference ligand, and to generating starting poses for molecular dynamics or free-energy workflows.
++
++#### Usage Tips
++
++- **A reference ligand is required to define the pocket.** Each protein must be paired with a reference ligand (an SDF block or `.sdf` path) carrying 3D coordinates; the pocket is the set of residues within `pocket_distance_cutoff` of that ligand. The `reference_ligands` list must align one-to-one with `proteins`, in the same order.
++- **Pick a `model_checkpoint` by bundled name.** The bundled checkpoints are `drugflow` (base model), `drugflow_ood` (adds a confidence head for out-of-distribution flagging), `flexflow` (also samples protein side-chain angles), and `drugflow_pa_comb` (preference-aligned). These are provisioned in the managed weights cache automatically; any other value is treated as a path to a custom `.ckpt`, which is not available on hosted workers, so run locally with `device="cuda"` when pointing at your own file.
++- **Raise `num_molecules_per_target` for larger libraries.** This is the number of molecules generated per protein pocket; molecules are sampled in `batch_size` chunks per GPU forward pass, so lower `batch_size` if a run exhausts GPU memory and raise it for throughput.
++- **Tune `pocket_distance_cutoff` to the pocket.** The default (8.0 Å) suits typical drug-like pockets; widen it for a larger or more open site and narrow it to focus on a tight subpocket. Leave `molecule_size` as `None` to sample sizes from DrugFlow's training-set distribution, or set it to cap heavy-atom count, and leave `n_steps` as `None` to use the checkpoint's default number of denoising steps.
++- **Use `seed` for reproducible batches.** When omitted, the framework draws a seed and advances it across every dispatch so repeated chunks still diverge; reuse the returned seed with the same checkpoint and configuration to reproduce a run.
++
++## Toolkit Notes
++
++<a href="https://bio-pro.mintlify.app/tools/guides/tool-persistence"><img src="https://img.shields.io/badge/Tool_Persistence_→-046e7a?style=flat-square&logo=readthedocs&logoColor=white" alt="Tool Persistence guide"></a> <a href="https://bio-pro.mintlify.app/tools/guides/device-management"><img src="https://img.shields.io/badge/Device_Management_→-046e7a?style=flat-square&logo=readthedocs&logoColor=white" alt="Device Management guide"></a> <a href="https://bio-pro.mintlify.app/tools/guides/parallel-execution"><img src="https://img.shields.io/badge/Parallel_Execution_→-046e7a?style=flat-square&logo=readthedocs&logoColor=white" alt="Parallel Execution guide"></a> <a href="https://bio-pro.mintlify.app/tools/guides/cloud-inference"><img src="https://img.shields.io/badge/Cloud_Inference_→-046e7a?style=flat-square&logo=readthedocs&logoColor=white" alt="Cloud Inference guide"></a>
++
++These apply to the DrugFlow tool in this toolkit (`drugflow-generate`).
++
++- **Runs on GPU.** Sampling the generative model uses a CUDA device; raise `batch_size` for throughput and lower it if the run exhausts GPU memory.
++- **Public checkpoints are downloaded automatically.** Unlike toolkits that require user-trained weights, DrugFlow's trained checkpoints are published publicly on [Zenodo](https://zenodo.org/records/14919171) and are fetched into the managed weights cache by `setup.sh` the first time the environment is built, so a bundled checkpoint name works out of the box.
++- **Generation is pocket-conditioned and produces posed ligands.** Each molecule is generated inside the pocket defined by its protein and reference ligand, and is returned with a 3D pose SDF in the pocket frame, not only a SMILES string.
++- **The tool is a CLI-subprocess wrapper over the upstream generator.** It builds an isolated standalone environment and drives the upstream `generate.py` as a subprocess, parsing its per-molecule output into the typed generation sets returned by this tool.
+diff --git a/proto_tools/tools/molecular_generation/drugflow/__init__.py b/proto_tools/tools/molecular_generation/drugflow/__init__.py
+new file mode 100644
+index 00000000..f7887e4a
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/drugflow/__init__.py
+@@ -0,0 +1,21 @@
++"""DrugFlow pocket-conditioned molecule generation."""
++
++from proto_tools.tools.molecular_generation.drugflow.drugflow_generate import (
++    DrugFlowGenerateConfig,
++    DrugFlowGenerateInput,
++    DrugFlowGenerateOutput,
++    DrugFlowGenerationSet,
++    DrugFlowMolecule,
++    DrugFlowMoleculeMetrics,
++    run_drugflow_generate,
++)
++
++__all__ = [
++    "DrugFlowGenerateConfig",
++    "DrugFlowGenerateInput",
++    "DrugFlowGenerateOutput",
++    "DrugFlowGenerationSet",
++    "DrugFlowMolecule",
++    "DrugFlowMoleculeMetrics",
++    "run_drugflow_generate",
++]
+diff --git a/proto_tools/tools/molecular_generation/drugflow/cite.bib b/proto_tools/tools/molecular_generation/drugflow/cite.bib
+new file mode 100644
+index 00000000..44f95b42
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/drugflow/cite.bib
+@@ -0,0 +1,10 @@
++@inproceedings{schneuing_2025_drugflow,
++  title={Multi-domain Distribution Learning for De Novo Drug Design},
++  author={Schneuing, Arne and Igashov, Ilia and Dobbelstein, Adrian W. and Castiglione, Thomas and Bronstein, Michael M. and Correia, Bruno},
++  booktitle={International Conference on Learning Representations (ICLR)},
++  year={2025},
++  eprint={2508.17815},
++  archivePrefix={arXiv},
++  primaryClass={q-bio.BM},
++  url={https://arxiv.org/abs/2508.17815}
++}
+diff --git a/proto_tools/tools/molecular_generation/drugflow/drugflow_generate.py b/proto_tools/tools/molecular_generation/drugflow/drugflow_generate.py
+new file mode 100644
+index 00000000..40346e73
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/drugflow/drugflow_generate.py
+@@ -0,0 +1,418 @@
++"""proto_tools/tools/molecular_generation/drugflow/drugflow_generate.py.
++
++DrugFlow pocket-conditioned molecule generation tool.
++"""
++
++import csv
++import json
++import logging
++from collections.abc import Iterator
++from pathlib import Path
++from typing import Any, ClassVar
++
++from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
++
++from proto_tools.entities.structures import Structure
++from proto_tools.tools.tool_registry import tool
++from proto_tools.utils import BaseConfig, BaseToolInput, BaseToolOutput, ConfigField, InputField, ToolInstance
++from proto_tools.utils.device import RemoteDevice
++from proto_tools.utils.progress import progress_bar
++from proto_tools.utils.tool_io import Metrics, MetricSpec
++
++logger = logging.getLogger(__name__)
++
++# Bundled checkpoints published on Zenodo (record 14919171); setup.sh downloads each into the
++# managed weights cache, so a user never fetches anything to use a bundled name.
++BUNDLED_CHECKPOINTS: dict[str, str] = {
++    "drugflow": "drugflow.ckpt",
++    "drugflow_ood": "drugflow_ood.ckpt",
++    "flexflow": "flexflow.ckpt",
++    "drugflow_pa_comb": "drugflow_pa_comb.ckpt",
++}
++
++
++# ============================================================================
++# Data Models
++# ============================================================================
++class DrugFlowGenerateInput(BaseToolInput):
++    """Input for DrugFlow pocket-conditioned molecule generation.
++
++    Attributes:
++        proteins (list[Structure]): Target protein structures; one pocket per structure.
++        reference_ligands (list[str]): Per-protein reference ligand, as an SDF block or a path to
++            an ``.sdf`` file with 3D coordinates. The pocket is the residues within
++            ``pocket_distance_cutoff`` of this ligand. One per protein, in the same order.
++    """
++
++    proteins: list[Structure] = InputField(
++        title="Proteins",
++        description="Target protein structures; one pocket (and generation set) per structure.",
++        min_length=1,
++    )
++    reference_ligands: list[str] = InputField(
++        title="Reference Ligands",
++        description="Per-protein reference ligand (SDF block or .sdf path) whose neighborhood defines the pocket.",
++    )
++
++    @field_validator("proteins", mode="before")
++    @classmethod
++    def _coerce_single_protein(cls, value: Any) -> Any:
++        """Accept a single protein as shorthand for a one-item list."""
++        return value if isinstance(value, (list, tuple)) else [value]
++
++    @field_validator("reference_ligands", mode="before")
++    @classmethod
++    def _coerce_single_reference(cls, value: Any) -> Any:
++        """Accept a single reference ligand as shorthand for a one-item list."""
++        return value if isinstance(value, (list, tuple)) else [value]
++
++    @model_validator(mode="after")
++    def _validate_parallel_lengths(self) -> "DrugFlowGenerateInput":
++        """Reference ligands must align one-to-one with proteins."""
++        if len(self.reference_ligands) != len(self.proteins):
++            raise ValueError(
++                f"reference_ligands ({len(self.reference_ligands)}) must align 1:1 with proteins ({len(self.proteins)})."
++            )
++        return self
++
++
++class DrugFlowGenerateConfig(BaseConfig):
++    """Configuration for DrugFlow molecule generation.
++
++    Attributes:
++        model_checkpoint (str): Bundled checkpoint name (``drugflow``, ``drugflow_ood``,
++            ``flexflow``, or ``drugflow_pa_comb``) provisioned in the weights cache, or a path to a
++            custom ``.ckpt``.
++        num_molecules_per_target (int): Molecules to generate per protein pocket.
++        batch_size (int): Molecules sampled per GPU forward pass; raise for throughput, lower if OOM.
++        pocket_distance_cutoff (float): Distance (Å) around the reference ligand that defines the pocket.
++        molecule_size (int | None): Maximum heavy-atom count per molecule; ``None`` samples sizes from
++            DrugFlow's training-set size distribution.
++        n_steps (int | None): Number of denoising steps; ``None`` uses the checkpoint's default.
++        device (str): Device to run the model on.
++    """
++
++    model_checkpoint: str = ConfigField(
++        title="Model Checkpoint",
++        default="drugflow",
++        description="Bundled name ('drugflow', 'drugflow_ood', 'flexflow', 'drugflow_pa_comb') or a .ckpt path.",
++        reload_on_change=True,
++    )
++    num_molecules_per_target: int = ConfigField(
++        title="Molecules Per Target",
++        default=10,
++        ge=1,
++        description="Number of molecules to generate per protein pocket.",
++    )
++    batch_size: int = ConfigField(
++        title="Batch Size",
++        default=32,
++        ge=1,
++        description="Molecules sampled per GPU forward pass; raise for throughput, lower if OOM.",
++    )
++    pocket_distance_cutoff: float = ConfigField(
++        title="Pocket Distance Cutoff",
++        default=8.0,
++        gt=0.0,
++        description="Distance (Å) around the reference ligand that defines the pocket.",
++    )
++    molecule_size: int | None = ConfigField(
++        title="Molecule Size",
++        default=None,
++        ge=1,
++        description="Max heavy atoms per molecule; None samples from DrugFlow's size distribution.",
++    )
++    n_steps: int | None = ConfigField(
++        title="Denoising Steps",
++        default=None,
++        ge=1,
++        description="Number of denoising steps; None uses the checkpoint default.",
++    )
++    device: str = ConfigField(
++        title="Device",
++        default="cuda",
++        description="Device to run the model on",
++        include_in_key=False,
++    )
++
++    def remote_unsupported_reason(self, device: RemoteDevice) -> str | None:
++        """A user-supplied checkpoint path isn't present on a hosted worker."""
++        if self.model_checkpoint not in BUNDLED_CHECKPOINTS:
++            return (
++                f"model_checkpoint points to a local checkpoint not available on device='{device}'. "
++                f"Use a bundled name ({', '.join(BUNDLED_CHECKPOINTS)}), or run locally with device='cuda'."
++            )
++        return None
++
++
++class DrugFlowMoleculeMetrics(Metrics):
++    """Per-molecule property metrics for a DrugFlow-generated molecule.
++
++    Metrics documented in ``metric_spec``:
++        qed (float): RDKit quantitative estimate of drug-likeness (0-1). Higher is more drug-like.
++        molecular_weight (float): Molecular weight in g/mol. Context, not a score.
++        num_atoms (float): Heavy-atom count. Context, not a score.
++    """
++
++    metric_spec: ClassVar[dict[str, MetricSpec]] = {
++        "qed": {
++            "availability": "when RDKit can compute QED for the molecule",
++            "type": "float",
++            "min": 0.0,
++            "max": 1.0,
++            "better_values_are": "higher",
++        },
++        "molecular_weight": {
++            "availability": "when RDKit can parse the molecule",
++            "type": "float",
++            "min": 0.0,
++            "max": None,
++            "unit": "g/mol",
++            "better_values_are": "context-dependent",
++        },
++        "num_atoms": {
++            "availability": "always",
++            "type": "float",
++            "min": 0.0,
++            "max": None,
++            "better_values_are": "context-dependent",
++        },
++    }
++    primary_metric: str | None = Field(
++        default="qed",
++        title="Primary Metric",
++        description="Headline metric used to rank molecules.",
++    )
++
++
++class DrugFlowMolecule(BaseModel):
++    """One molecule generated by DrugFlow, with its 3D pose and property metrics.
++
++    Attributes:
++        smiles (str): Canonical SMILES of the generated molecule.
++        pose_sdf (str | None): The generated 3D pose as an SDF mol block, in the target pocket frame.
++        metrics (DrugFlowMoleculeMetrics): Per-molecule property metrics.
++    """
++
++    model_config = ConfigDict(extra="forbid")
++
++    smiles: str = Field(title="SMILES", description="Canonical SMILES of the generated molecule")
++    pose_sdf: str | None = Field(
++        default=None,
++        title="Pose SDF",
++        description="Generated 3D pose as an SDF mol block, in the pocket frame.",
++    )
++    metrics: DrugFlowMoleculeMetrics = Field(
++        default_factory=DrugFlowMoleculeMetrics,
++        title="Metrics",
++        description="Per-molecule property metrics.",
++    )
++
++
++class DrugFlowGenerationSet(BaseModel):
++    """All molecules generated for a single protein pocket, in sampling order.
++
++    Attributes:
++        molecules (list[DrugFlowMolecule]): The molecules generated for one pocket.
++        label (str | None): Optional label echoed from the input, to tag the target.
++    """
++
++    model_config = ConfigDict(extra="forbid")
++
++    molecules: list[DrugFlowMolecule] = Field(
++        title="Molecules",
++        description="Molecules generated for one protein pocket, in sampling order.",
++    )
++    label: str | None = Field(
++        default=None,
++        title="Label",
++        description="Optional label identifying the target pocket.",
++    )
++
++    def __len__(self) -> int:
++        return len(self.molecules)
++
++    def __getitem__(self, index: int) -> DrugFlowMolecule:
++        return self.molecules[index]
++
++    def __iter__(self) -> Iterator[DrugFlowMolecule]:  # type: ignore[override]
++        return iter(self.molecules)
++
++
++class DrugFlowGenerateOutput(BaseToolOutput):
++    """Output of the DrugFlow generation tool.
++
++    Attributes:
++        generation_sets (list[DrugFlowGenerationSet]): One generation set per input protein, in order.
++    """
++
++    generation_sets: list[DrugFlowGenerationSet] = Field(
++        title="Generation Sets",
++        description="One DrugFlowGenerationSet per input protein, in input order.",
++    )
++
++    @property
++    def molecules(self) -> list[DrugFlowMolecule]:
++        """All generated molecules across every generation set, in order."""
++        return [mol for generation_set in self.generation_sets for mol in generation_set.molecules]
++
++    @property
++    def smiles(self) -> list[str]:
++        """Canonical SMILES of every generated molecule, in order."""
++        return [mol.smiles for mol in self.molecules]
++
++    @property
++    def output_format_options(self) -> list[str]:
++        """Return the supported output format options."""
++        return ["sdf", "smi", "csv", "json"]
++
++    @property
++    def output_format_default(self) -> str:
++        """Return the default output format."""
++        return "sdf"
++
++    def _export_output(self, export_path: str | Path, file_format: str) -> None:
++        path = Path(export_path).with_suffix(f".{file_format}")
++
++        if file_format == "sdf":
++            blocks = [mol.pose_sdf for mol in self.molecules if mol.pose_sdf]
++            path.write_text("".join(block if block.endswith("$$$$\n") else f"{block}\n$$$$\n" for block in blocks))
++        elif file_format == "smi":
++            path.write_text("".join(f"{mol.smiles}\n" for mol in self.molecules))
++        elif file_format == "csv":
++            with open(path, "w", newline="") as f:
++                writer = csv.writer(f)
++                writer.writerow(["smiles", "label", "qed", "molecular_weight", "num_atoms"])
++                for generation_set in self.generation_sets:
++                    for mol in generation_set.molecules:
++                        writer.writerow(
++                            [
++                                mol.smiles,
++                                generation_set.label or "",
++                                mol.metrics.get("qed"),
++                                mol.metrics.get("molecular_weight"),
++                                mol.metrics.get("num_atoms"),
++                            ]
++                        )
++        elif file_format == "json":
++            path.write_text(json.dumps(self.model_dump(mode="json"), indent=2))
++        else:
++            raise ValueError(f"Unsupported format: {file_format}")
++
++
++# ============================================================================
++# Tool Implementation
++# ============================================================================
++def example_input() -> Any:
++    """Minimal valid input for testing and examples."""
++    pdb = (
++        "ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N\n"
++        "ATOM      2  CA  ALA A   1       1.458   0.000   0.000  1.00  0.00           C\n"
++        "END\n"
++    )
++    ref_sdf = (
++        "\n     RDKit          3D\n\n"
++        "  1  0  0  0  0  0  0  0  0  0999 V2000\n"
++        "    0.5000    0.5000    0.5000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
++        "M  END\n$$$$\n"
++    )
++    return DrugFlowGenerateInput(
++        proteins=[Structure(structure=pdb, structure_format="pdb")],
++        reference_ligands=[ref_sdf],
++    )
++
++
++def _reference_ligand_sdf(reference_ligand: str) -> str:
++    """Return the reference ligand as SDF content, reading a path if one was given."""
++    candidate = Path(reference_ligand)
++    if len(reference_ligand) < 4096 and candidate.is_file():
++        return candidate.read_text()
++    return reference_ligand
++
++
++def _molecules_from_dicts(raw_molecules: list[dict[str, Any]]) -> list[DrugFlowMolecule]:
++    """Build typed molecules from the standalone's per-molecule dicts."""
++    return [
++        DrugFlowMolecule(
++            smiles=raw["smiles"],
++            pose_sdf=raw.get("pose_sdf"),
++            metrics=DrugFlowMoleculeMetrics(**raw.get("metrics", {})),
++        )
++        for raw in raw_molecules
++    ]
++
++
++@tool(
++    key="drugflow-generate",
++    label="DrugFlow Molecule Generation",
++    category="molecular_generation",
++    input_class=DrugFlowGenerateInput,
++    config_class=DrugFlowGenerateConfig,
++    output_class=DrugFlowGenerateOutput,
++    metrics_class=DrugFlowMoleculeMetrics,
++    description="Pocket-conditioned de novo generation of 3D small molecules with DrugFlow",
++    uses_gpu=True,
++    device_count="1",
++    example_input=example_input,
++    iterable_input_fields=["proteins", "reference_ligands"],
++    iterable_output_field="generation_sets",
++    max_chunk_size=1,
++    cacheable=True,
++    stochastic=True,
++)
++def run_drugflow_generate(
++    inputs: DrugFlowGenerateInput,
++    config: DrugFlowGenerateConfig,
++    instance: Any = None,
++) -> DrugFlowGenerateOutput:
++    """Generate 3D small molecules conditioned on each protein pocket with DrugFlow.
++
++    Args:
++        inputs (DrugFlowGenerateInput): Target proteins and their per-pocket reference ligands.
++        config (DrugFlowGenerateConfig): Generation configuration (checkpoint, count, pocket cutoff, etc.).
++        instance (Any): Optional ToolInstance for subprocess execution.
++
++    Returns:
++        DrugFlowGenerateOutput: One DrugFlowGenerationSet per protein, each holding the generated
++            molecules with their 3D poses and property metrics.
++    """
++    logger.debug("Using local venv for drugflow generation")
++
++    base_seed = config.seed if config.seed is not None else config.get_random_int()
++    dispatch_idx = 0
++
++    generation_sets: list[DrugFlowGenerationSet] = []
++    for protein, reference_ligand in progress_bar(
++        list(zip(inputs.proteins, inputs.reference_ligands, strict=True)),
++        desc="DrugFlow generation",
++        unit="pocket",
++        total=len(inputs.proteins),
++    ):
++        reference_sdf = _reference_ligand_sdf(reference_ligand)
++        collected: list[DrugFlowMolecule] = []
++        remaining = config.num_molecules_per_target
++        while remaining > 0:
++            chunk = min(config.batch_size, remaining)
++            input_dict = {
++                "operation": "generate",
++                "model_checkpoint": config.model_checkpoint,
++                "protein_pdb": protein.structure_pdb,
++                "reference_ligand_sdf": reference_sdf,
++                "n_samples": chunk,
++                "batch_size": chunk,
++                "pocket_distance_cutoff": config.pocket_distance_cutoff,
++                "molecule_size": config.molecule_size,
++                "n_steps": config.n_steps,
++                "seed": base_seed + dispatch_idx,
++                "device": config.device,
++                "verbose": config.verbose,
++            }
++            result = ToolInstance.dispatch("drugflow", input_dict, instance=instance, config=config)
++            collected.extend(_molecules_from_dicts(result["molecules"]))
++            dispatch_idx += 1
++            remaining -= chunk
++
++        label = protein.source if isinstance(protein.source, str) else None
++        generation_sets.append(DrugFlowGenerationSet(molecules=collected[: config.num_molecules_per_target], label=label))
++
++    return DrugFlowGenerateOutput(generation_sets=generation_sets)
+diff --git a/proto_tools/tools/molecular_generation/drugflow/examples/example.ipynb b/proto_tools/tools/molecular_generation/drugflow/examples/example.ipynb
+new file mode 100644
+index 00000000..286ea02a
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/drugflow/examples/example.ipynb
+@@ -0,0 +1,198 @@
++{
++ "cells": [
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "# DrugFlow: Pocket-Conditioned Molecule Generation\n",
++    "\n",
++    "This notebook demonstrates `run_drugflow_generate`, which uses DrugFlow to generate 3D small molecules conditioned on a target protein pocket, where the pocket is defined by a reference ligand. Each target yields a generation set of molecules, and every molecule carries its SMILES, a 3D pose (SDF), and property metrics such as QED.\n",
++    "\n",
++    "- Code and models: https://github.com/LPDI-EPFL/DrugFlow\n",
++    "- Paper: [DrugFlow (arXiv:2508.17815)](https://arxiv.org/abs/2508.17815)"
++   ],
++   "id": "title-md"
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "from proto_tools.utils.notebook_docs import display_api_reference\n",
++    "from proto_tools import (\n",
++    "    run_drugflow_generate,\n",
++    "    DrugFlowGenerateInput,\n",
++    "    DrugFlowGenerateConfig,\n",
++    ")\n",
++    "from proto_tools.entities.structures import Structure"
++   ],
++   "id": "imports"
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "display_api_reference(\"drugflow-generate\", \"input\", \"run_drugflow_generate\")"
++   ],
++   "id": "input-ref"
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "display_api_reference(\"drugflow-generate\", \"config\", \"run_drugflow_generate\")"
++   ],
++   "id": "config-ref"
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "display_api_reference(\"drugflow-generate\", \"output\", \"run_drugflow_generate\")"
++   ],
++   "id": "output-ref"
++  },
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "## Running DrugFlow\n",
++    "\n",
++    "> **Note:** Running the tool requires a **GPU**, a **target protein PDB**, and a **reference ligand SDF** whose neighborhood defines the pocket. The public checkpoints (`drugflow`, `drugflow_ood`, `flexflow`, `drugflow_pa_comb`) are **auto-downloaded** into the managed weights cache on first use, so no manual weight provisioning is needed. The execution cells below are **illustrative** and are wrapped in `try`/`except` so the notebook runs end-to-end on hosts without a GPU; on such a host they print a friendly message instead of failing."
++   ],
++   "id": "gpu-note-md"
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "# Basic usage: one protein pocket, defined by a reference ligand.\n",
++    "# These tiny PDB / SDF strings mirror the tool's example_input(); swap in\n",
++    "# a real target PDB and a reference-ligand SDF with 3D coordinates.\n",
++    "pdb = (\n",
++    "    \"ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N\\n\"\n",
++    "    \"ATOM      2  CA  ALA A   1       1.458   0.000   0.000  1.00  0.00           C\\n\"\n",
++    "    \"END\\n\"\n",
++    ")\n",
++    "ref_sdf = (\n",
++    "    \"\\n     RDKit          3D\\n\\n\"\n",
++    "    \"  1  0  0  0  0  0  0  0  0  0999 V2000\\n\"\n",
++    "    \"    0.5000    0.5000    0.5000 C   0  0  0  0  0  0  0  0  0  0  0  0\\n\"\n",
++    "    \"M  END\\n$$$$\\n\"\n",
++    ")\n",
++    "\n",
++    "prot = Structure(structure=pdb, structure_format=\"pdb\")\n",
++    "\n",
++    "inputs = DrugFlowGenerateInput(\n",
++    "    proteins=[prot],\n",
++    "    reference_ligands=[ref_sdf],\n",
++    ")\n",
++    "config = DrugFlowGenerateConfig(\n",
++    "    num_molecules_per_target=5,\n",
++    "    device=\"cuda\",  # DrugFlow requires a GPU\n",
++    ")\n",
++    "\n",
++    "try:\n",
++    "    result = run_drugflow_generate(inputs, config)\n",
++    "    print(f\"success: {result.success}\")\n",
++    "    print(f\"molecules generated: {len(result.molecules)}\")\n",
++    "    for mol in result.molecules[:3]:\n",
++    "        qed = mol.metrics.get(\"qed\")\n",
++    "        print(f\"  {mol.smiles}  qed={qed}\")\n",
++    "except Exception as exc:\n",
++    "    print(\"Skipping execution: DrugFlow requires a GPU.\")\n",
++    "    print(f\"  ({type(exc).__name__}: {exc})\")"
++   ],
++   "id": "basic-usage"
++  },
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "## Advanced usage\n",
++    "\n",
++    "Tune generation with non-default knobs: choose a different public checkpoint via `model_checkpoint` (e.g. `\"drugflow_ood\"` for out-of-distribution pockets), widen or narrow the `pocket_distance_cutoff` (\u00c5 around the reference ligand), and cap heavy-atom count with `molecule_size`. Each input protein produces one entry in `result.generation_sets`."
++   ],
++   "id": "advanced-md"
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "# Advanced usage: non-default checkpoint, pocket cutoff, and molecule size.\n",
++    "adv_config = DrugFlowGenerateConfig(\n",
++    "    model_checkpoint=\"drugflow_ood\",  # out-of-distribution checkpoint\n",
++    "    num_molecules_per_target=5,\n",
++    "    pocket_distance_cutoff=10.0,      # larger pocket neighborhood (\u00c5)\n",
++    "    molecule_size=30,                 # cap heavy-atom count\n",
++    "    device=\"cuda\",\n",
++    "    seed=42,\n",
++    ")\n",
++    "\n",
++    "try:\n",
++    "    adv_result = run_drugflow_generate(inputs, adv_config)\n",
++    "    for i, gen_set in enumerate(adv_result.generation_sets):\n",
++    "        print(f\"target {i} [{gen_set.label}]: {len(gen_set.molecules)} molecules\")\n",
++    "        for mol in gen_set.molecules[:3]:\n",
++    "            has_pose = mol.pose_sdf is not None\n",
++    "            print(f\"    {mol.smiles}  pose_sdf={'present' if has_pose else 'absent'}\")\n",
++    "except Exception as exc:\n",
++    "    print(\"Skipping execution: DrugFlow requires a GPU.\")\n",
++    "    print(f\"  ({type(exc).__name__}: {exc})\")"
++   ],
++   "id": "advanced-usage"
++  },
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "## Export results\n",
++    "\n",
++    "The output exports to `\"sdf\"` (3D poses as an SDF file, the default), `\"smi\"` (one SMILES per line), `\"csv\"` (SMILES plus per-molecule metrics), and `\"json\"` (the full typed output). The export cell is guarded so it is skipped when no result was produced above."
++   ],
++   "id": "export-md"
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "from pathlib import Path\n",
++    "\n",
++    "output_dir = Path(\"./example_output\")\n",
++    "output_dir.mkdir(exist_ok=True)\n",
++    "\n",
++    "try:\n",
++    "    result.export(name=\"drugflow_molecules\", export_path=output_dir, file_format=\"sdf\")\n",
++    "    result.export(name=\"drugflow_molecules\", export_path=output_dir, file_format=\"smi\")\n",
++    "    print(f\"Results exported to {output_dir}\")\n",
++    "except NameError:\n",
++    "    print(\"Skipping export: no result was produced (requires a GPU).\")"
++   ],
++   "id": "export"
++  }
++ ],
++ "metadata": {
++  "kernelspec": {
++   "name": "python3",
++   "display_name": "proto-tools"
++  },
++  "language_info": {
++   "name": "python"
++  }
++ },
++ "nbformat": 4,
++ "nbformat_minor": 5
++}
+diff --git a/proto_tools/tools/molecular_generation/drugflow/license.yaml b/proto_tools/tools/molecular_generation/drugflow/license.yaml
+new file mode 100644
+index 00000000..a729c7b6
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/drugflow/license.yaml
+@@ -0,0 +1,8 @@
++code:
++  spdx: MIT
++  url: https://github.com/LPDI-EPFL/DrugFlow/blob/main/LICENSE
++commercial_use: 'yes'
++redistribution: true
++attribution_required: false
++notes: DrugFlow (LPDI-EPFL/DrugFlow) is MIT-licensed, Copyright (c) 2025 Arne Schneuing, Ilia Igashov, Adrian Dobbelstein. Trained checkpoints are published publicly on Zenodo (record 14919171) and are auto-downloaded during setup; review the Zenodo record's own license terms before redistributing the weights.
++last_updated: '2026-10-19'
+diff --git a/proto_tools/tools/molecular_generation/drugflow/links.yaml b/proto_tools/tools/molecular_generation/drugflow/links.yaml
+new file mode 100644
+index 00000000..fa1fbc04
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/drugflow/links.yaml
+@@ -0,0 +1,7 @@
++github: https://github.com/LPDI-EPFL/DrugFlow
++preprint: https://arxiv.org/abs/2508.17815
++checkpoints: https://zenodo.org/records/14919171
++data: https://zenodo.org/records/14919171
++organizations:
++  - EPFL
++  - University of Oxford
+diff --git a/proto_tools/tools/molecular_generation/drugflow/standalone/env_vars.txt b/proto_tools/tools/molecular_generation/drugflow/standalone/env_vars.txt
+new file mode 100644
+index 00000000..19f43731
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/drugflow/standalone/env_vars.txt
+@@ -0,0 +1,5 @@
++[passthrough]
++PROTO_DRUGFLOW_WEIGHTS_DIR
++
++[set]
++LD_LIBRARY_PATH=${VENV_PATH}/lib:${VENV_PATH}/cuda_env/lib
+diff --git a/proto_tools/tools/molecular_generation/drugflow/standalone/inference.py b/proto_tools/tools/molecular_generation/drugflow/standalone/inference.py
+new file mode 100644
+index 00000000..5a1c4fcf
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/drugflow/standalone/inference.py
+@@ -0,0 +1,179 @@
++"""DrugFlow pocket-conditioned molecule generation (standalone inference).
++
++DrugFlow's ``src/generate.py`` is a CLI-only entry point, so this driver writes the protein and
++reference-ligand inputs to temporary files, invokes ``generate.py`` as a subprocess against the
++cloned repo, and parses the resulting SDF of 3D poses back into SMILES + metrics.
++"""
++
++import json
++import os
++import subprocess
++import sys
++import tempfile
++from pathlib import Path
++from typing import Any
++
++from standalone_helpers import get_logger, get_random_int, resolve_weights_dir, serialize_output
++
++logger = get_logger(__name__)
++
++# Bundled Zenodo checkpoints provisioned by setup.sh into the managed weights cache.
++BUNDLED_CHECKPOINTS = {
++    "drugflow": "drugflow.ckpt",
++    "drugflow_ood": "drugflow_ood.ckpt",
++    "flexflow": "flexflow.ckpt",
++    "drugflow_pa_comb": "drugflow_pa_comb.ckpt",
++}
++
++
++def _repo_dir() -> Path:
++    """Locate the DrugFlow checkout that setup.sh cloned under the tool venv."""
++    venv = os.environ.get("TOOL_VENV_PATH") or os.environ.get("VIRTUAL_ENV")
++    if not venv:
++        raise RuntimeError("drugflow: neither TOOL_VENV_PATH nor VIRTUAL_ENV is set; invoke via ToolInstance.")
++    repo = Path(venv) / "data" / "DrugFlow"
++    if not (repo / "src" / "generate.py").is_file():
++        raise RuntimeError(f"drugflow: DrugFlow checkout not found at {repo}; re-run setup.sh.")
++    return repo
++
++
++def _resolve_checkpoint(model_checkpoint: str) -> str:
++    """Resolve a bundled checkpoint name to its cached path, or pass a custom path through."""
++    if model_checkpoint not in BUNDLED_CHECKPOINTS:
++        if not Path(model_checkpoint).is_file():
++            raise FileNotFoundError(f"drugflow: checkpoint not found at {model_checkpoint!r}")
++        return model_checkpoint
++    weights_dir = resolve_weights_dir("drugflow")
++    if weights_dir is None:
++        raise FileNotFoundError("drugflow: could not resolve a weights directory for the bundled checkpoint")
++    candidate = Path(weights_dir) / BUNDLED_CHECKPOINTS[model_checkpoint]
++    if not candidate.is_file():
++        raise FileNotFoundError(f"drugflow: bundled checkpoint {candidate} not found; re-run setup.sh.")
++    return str(candidate)
++
++
++def _parse_sdf(sdf_path: Path) -> list[dict[str, Any]]:
++    """Parse generated poses into per-molecule SMILES, mol block, and property metrics."""
++    from rdkit import Chem
++    from rdkit.Chem import QED, Descriptors
++
++    molecules: list[dict[str, Any]] = []
++    supplier = Chem.SDMolSupplier(str(sdf_path), removeHs=False, sanitize=True)
++    for mol in supplier:
++        if mol is None:
++            continue
++        try:
++            smiles = Chem.MolToSmiles(mol)
++        except Exception:  # a pose RDKit cannot canonicalize is dropped rather than failing the batch
++            continue
++        try:
++            qed = float(QED.qed(mol))
++        except Exception:
++            qed = float("nan")
++        molecules.append(
++            {
++                "smiles": smiles,
++                "pose_sdf": Chem.MolToMolBlock(mol),
++                "metrics": {
++                    "qed": qed,
++                    "molecular_weight": float(Descriptors.MolWt(mol)),
++                    "num_atoms": float(mol.GetNumHeavyAtoms()),
++                },
++            }
++        )
++    return molecules
++
++
++def generate(input_dict: dict[str, Any]) -> dict[str, Any]:
++    """Run DrugFlow's generate.py for one pocket and return the generated molecules."""
++    from standalone_helpers import get_subprocess_device_env
++
++    repo = _repo_dir()
++    checkpoint = _resolve_checkpoint(input_dict["model_checkpoint"])
++    device = input_dict["device"]
++    seed = input_dict.get("seed")
++    seed = seed if seed is not None else get_random_int()
++
++    with tempfile.TemporaryDirectory(prefix="drugflow_") as tmpdir:
++        tmp = Path(tmpdir)
++        protein_path = tmp / "protein.pdb"
++        ref_path = tmp / "ref_ligand.sdf"
++        out_path = tmp / "samples.sdf"
++        protein_path.write_text(input_dict["protein_pdb"])
++        ref_path.write_text(input_dict["reference_ligand_sdf"])
++
++        cmd = [
++            sys.executable,
++            str(repo / "src" / "generate.py"),
++            "--protein", str(protein_path),
++            "--ref_ligand", str(ref_path),
++            "--checkpoint", checkpoint,
++            "--output", str(out_path),
++            "--n_samples", str(input_dict["n_samples"]),
++            "--batch_size", str(input_dict["batch_size"]),
++            "--pocket_distance_cutoff", str(input_dict["pocket_distance_cutoff"]),
++            "--device", device,
++            "--seed", str(seed),
++        ]
++        if input_dict.get("molecule_size") is not None:
++            cmd += ["--molecule_size", str(input_dict["molecule_size"])]
++        if input_dict.get("n_steps") is not None:
++            cmd += ["--n_steps", str(input_dict["n_steps"])]
++
++        verbose = bool(input_dict.get("verbose"))
++        logger.update_status("Running DrugFlow generation")
++        logger.debug("drugflow: spawning %s", " ".join(cmd))
++        env = {**os.environ, **get_subprocess_device_env(device), "PYTHONPATH": str(repo)}
++        proc = subprocess.run(
++            cmd,
++            cwd=str(repo),
++            env=env,
++            check=False,
++            stdout=sys.stdout if verbose else subprocess.PIPE,
++            stderr=sys.stderr if verbose else subprocess.PIPE,
++            text=True,
++        )
++        if proc.returncode != 0:
++            tail = "" if verbose else (proc.stderr or "")[-2000:]
++            raise RuntimeError(f"drugflow: generate.py exited {proc.returncode}.\n{tail}")
++        if not out_path.is_file():
++            raise RuntimeError("drugflow: generate.py produced no output SDF.")
++        molecules = _parse_sdf(out_path)
++
++    return {"molecules": molecules}
++
++
++# ============================================================================
++# Dispatch
++# ============================================================================
++def dispatch(input_dict: dict[str, Any]) -> dict[str, Any]:
++    """Entry point for both persistent-worker and one-shot execution."""
++    operation = input_dict["operation"]
++    if operation == "generate":
++        return generate(input_dict)
++    raise ValueError(f"drugflow: unknown operation {operation!r}; valid: ['generate']")
++
++
++def to_device(device: str) -> dict[str, Any]:
++    """DrugFlow runs as a subprocess CLI and auto-unloads after each call."""
++    return {"success": True, "device": device, "note": "CLI subprocess, auto-unloads"}
++
++
++def get_memory_stats() -> dict[str, Any]:
++    """Report GPU memory usage (the generate.py subprocess uses the GPU)."""
++    from standalone_helpers import get_pytorch_memory_stats
++
++    return get_pytorch_memory_stats(device=0)  # type: ignore[no-any-return]
++
++
++if __name__ == "__main__":
++    if len(sys.argv) != 3:
++        raise ValueError("drugflow: usage: python inference.py <input_json_path> <output_json_path>")
++
++    with open(sys.argv[1]) as f:
++        input_data = json.load(f)
++
++    result = dispatch(input_data)
++
++    with open(sys.argv[2], "w") as f:
++        json.dump(serialize_output(result), f)
+diff --git a/proto_tools/tools/molecular_generation/drugflow/standalone/python_version.txt b/proto_tools/tools/molecular_generation/drugflow/standalone/python_version.txt
+new file mode 100644
+index 00000000..d4af04d4
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/drugflow/standalone/python_version.txt
+@@ -0,0 +1 @@
++default: 3.11
+diff --git a/proto_tools/tools/molecular_generation/drugflow/standalone/requirements.txt b/proto_tools/tools/molecular_generation/drugflow/standalone/requirements.txt
+new file mode 100644
+index 00000000..3bded5cb
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/drugflow/standalone/requirements.txt
+@@ -0,0 +1,15 @@
++# DrugFlow Python dependencies (mirrors the upstream environment.yaml).
++# torch (2.2.1) and the PyG stack are installed by setup.sh; openbabel comes from conda-forge.
++pytorch-lightning==2.2.1
++rdkit==2023.9.6
++biopython==1.83
++scipy==1.12.0
++ProDy==2.4.0
++wandb==0.16.3
++pandas==2.2.2
++posebusters==0.3.1
++useful_rdkit_utils==0.65
++fcd==1.2.2
++webdataset==0.2.86
++prolif==2.0.3
++numpy<2
+diff --git a/proto_tools/tools/molecular_generation/drugflow/standalone/setup.sh b/proto_tools/tools/molecular_generation/drugflow/standalone/setup.sh
+new file mode 100644
+index 00000000..3217df95
+--- /dev/null
++++ b/proto_tools/tools/molecular_generation/drugflow/standalone/setup.sh
+@@ -0,0 +1,52 @@
++#!/bin/bash
++# Provisioning script for the DrugFlow standalone environment.
++#
++# DrugFlow (MIT, https://github.com/LPDI-EPFL/DrugFlow) is CLI-only, so this env clones the repo
++# and the driver shells out to src/generate.py. The env mirrors the upstream conda environment.yaml
++# (torch 2.2.1/cu121, PyG 2.5.1, openbabel 3.1.1, rdkit, prody, posebusters, ...). Model checkpoints
++# are public on Zenodo (record 14919171) and are downloaded into the managed weights cache.
++set -euo pipefail
++source standalone_helpers.sh
++
++echo "Setting up DrugFlow standalone environment..."
++
++# DrugFlow pins torch 2.2.1 built against CUDA 12.1.
++proto_install_cuda_toolkit "12.1.*"
++proto_install_pytorch "torch==2.2.1"
++
++# PyTorch Geometric stack, matched to torch 2.2.1 + cu121 companion wheels.
++echo "Installing PyTorch Geometric stack..."
++uv pip install "torch-scatter==2.1.2" "torch-geometric==2.5.1" \
++    --find-links "https://data.pyg.org/whl/torch-2.2.1+cu121.html"
++
++# openbabel has no reliable pip wheel; install it from conda-forge into the venv (DrugFlow's
++# evaluation/interaction code imports it).
++echo "Installing openbabel via conda-forge..."
++"$MAMBA_BIN" install -y -p "$VENV_PATH" -c conda-forge "openbabel=3.1.1"
++
++echo "Installing pinned Python dependencies..."
++uv pip install -r requirements.txt
++
++# Clone DrugFlow. Pin DRUGFLOW_COMMIT to a reviewed commit before shipping; defaults to main.
++DRUGFLOW_DIR="${VENV_PATH}/data/DrugFlow"
++DRUGFLOW_COMMIT="${DRUGFLOW_COMMIT:-main}"
++mkdir -p "${VENV_PATH}/data"
++if [ ! -d "$DRUGFLOW_DIR/.git" ]; then
++    echo "Cloning LPDI-EPFL/DrugFlow..."
++    git clone https://github.com/LPDI-EPFL/DrugFlow.git "$DRUGFLOW_DIR"
++fi
++git -C "$DRUGFLOW_DIR" fetch --depth=200 origin
++git -C "$DRUGFLOW_DIR" checkout "$DRUGFLOW_COMMIT"
++echo "DrugFlow pinned to ${DRUGFLOW_COMMIT}"
++
++# Public model checkpoints from Zenodo (record 14919171).
++proto_resolve_weights_dir drugflow
++for ckpt in drugflow drugflow_ood flexflow drugflow_pa_comb; do
++    if [ ! -f "$WEIGHTS_DIR/${ckpt}.ckpt" ]; then
++        echo "Downloading ${ckpt}.ckpt..."
++        wget -q -O "$WEIGHTS_DIR/${ckpt}.ckpt" \
++            "https://zenodo.org/records/14919171/files/${ckpt}.ckpt?download=1"
++    fi
++done
++
++echo "DrugFlow setup complete!"
+diff --git a/tests/molecular_generation_tests/__init__.py b/tests/molecular_generation_tests/__init__.py
+new file mode 100644
+index 00000000..8d1dc128
+--- /dev/null
++++ b/tests/molecular_generation_tests/__init__.py
+@@ -0,0 +1 @@
++"""Tests for molecular generation tools."""
+diff --git a/tests/molecular_generation_tests/test_drugflow_generate.py b/tests/molecular_generation_tests/test_drugflow_generate.py
+new file mode 100644
+index 00000000..e2c594ce
+--- /dev/null
++++ b/tests/molecular_generation_tests/test_drugflow_generate.py
+@@ -0,0 +1,235 @@
++"""tests/molecular_generation_tests/test_drugflow_generate.py.
++
++Tests for DrugFlow pocket-conditioned molecule generation.
++"""
++
++import csv
++import json
++from pathlib import Path
++
++import pytest
++from pydantic import ValidationError
++
++from proto_tools import (
++    DrugFlowGenerateConfig,
++    DrugFlowGenerateInput,
++    DrugFlowGenerateOutput,
++    DrugFlowGenerationSet,
++    DrugFlowMolecule,
++    DrugFlowMoleculeMetrics,
++    run_drugflow_generate,
++)
++from proto_tools.entities.structures import Structure
++from proto_tools.tools.molecular_generation.drugflow.drugflow_generate import (
++    BUNDLED_CHECKPOINTS,
++    example_input,
++)
++from tests.conftest import benchmark_twice
++
++_PDB = (
++    "ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N\n"
++    "ATOM      2  CA  ALA A   1       1.458   0.000   0.000  1.00  0.00           C\n"
++    "END\n"
++)
++_REFERENCE_SDF = (
++    "\n     RDKit          3D\n\n"
++    "  1  0  0  0  0  0  0  0  0  0999 V2000\n"
++    "    0.5000    0.5000    0.5000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
++    "M  END\n$$$$\n"
++)
++_POSE_SDF = (
++    "\n     RDKit          3D\n\n"
++    "  3  2  0  0  0  0  0  0  0  0999 V2000\n"
++    "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
++    "    1.5000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
++    "    2.0000    1.4000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n"
++    "  1  2  1  0\n"
++    "  2  3  1  0\n"
++    "M  END\n"
++)
++
++
++def _sample_output() -> DrugFlowGenerateOutput:
++    """Build a two-pocket output without running the model."""
++    first_pocket = DrugFlowGenerationSet(
++        molecules=[
++            DrugFlowMolecule(
++                smiles="CCO",
++                pose_sdf=_POSE_SDF,
++                metrics=DrugFlowMoleculeMetrics(qed=0.6, molecular_weight=46.0, num_atoms=3),
++            ),
++            DrugFlowMolecule(
++                smiles="c1ccccc1",
++                metrics=DrugFlowMoleculeMetrics(qed=0.55, molecular_weight=78.0, num_atoms=6),
++            ),
++        ],
++        label="target_a",
++    )
++    second_pocket = DrugFlowGenerationSet(
++        molecules=[
++            DrugFlowMolecule(
++                smiles="CCN",
++                metrics=DrugFlowMoleculeMetrics(qed=0.4, molecular_weight=45.0, num_atoms=3),
++            ),
++        ],
++        label="target_b",
++    )
++    return DrugFlowGenerateOutput(generation_sets=[first_pocket, second_pocket])
++
++
++# Input validators
++
++
++def test_single_protein_and_reference_are_coerced_to_lists() -> None:
++    """A bare protein and a bare reference ligand become one-item parallel lists."""
++    structure = Structure(structure=_PDB, structure_format="pdb")
++
++    inputs = DrugFlowGenerateInput(proteins=structure, reference_ligands=_REFERENCE_SDF)
++
++    assert len(inputs.proteins) == 1
++    assert len(inputs.reference_ligands) == 1
++    assert inputs.reference_ligands[0] == _REFERENCE_SDF
++
++
++def test_mismatched_protein_and_reference_counts_are_rejected() -> None:
++    """The model validator refuses references that do not align 1:1 with proteins."""
++    structure = Structure(structure=_PDB, structure_format="pdb")
++
++    with pytest.raises(ValidationError, match="align"):
++        DrugFlowGenerateInput(
++            proteins=[structure, structure],
++            reference_ligands=[_REFERENCE_SDF],
++        )
++
++
++# Remote support gating
++
++
++@pytest.mark.parametrize("bundled_name", list(BUNDLED_CHECKPOINTS))
++@pytest.mark.parametrize("device", ["modal", "proto"])
++def test_bundled_checkpoints_are_supported_remotely(bundled_name: str, device: str) -> None:
++    """Every bundled checkpoint is provisioned on hosted workers, so remote support is unrestricted."""
++    config = DrugFlowGenerateConfig(model_checkpoint=bundled_name)
++
++    assert config.remote_unsupported_reason(device) is None
++
++
++@pytest.mark.parametrize("device", ["modal", "proto"])
++def test_custom_checkpoint_path_is_unsupported_remotely(device: str) -> None:
++    """A user-supplied .ckpt path is absent on hosted workers, so the reason names the device."""
++    config = DrugFlowGenerateConfig(model_checkpoint="checkpoints/my_custom_model.ckpt")
++
++    reason = config.remote_unsupported_reason(device)
++
++    assert reason is not None
++    assert device in reason
++
++
++# Output export round-trip (no model execution)
++
++
++def test_output_molecules_and_smiles_flatten_across_generation_sets() -> None:
++    """The output properties flatten every pocket's molecules in input order."""
++    output = _sample_output()
++
++    assert len(output.molecules) == 3
++    assert output.smiles == ["CCO", "c1ccccc1", "CCN"]
++
++
++def test_output_exports_one_smiles_per_line(tmp_path: Path) -> None:
++    """The .smi export writes one SMILES per molecule, one per line."""
++    output = _sample_output()
++
++    output.export("gen", tmp_path, file_format="smi")
++
++    lines = (tmp_path / "gen.smi").read_text().splitlines()
++    assert lines == ["CCO", "c1ccccc1", "CCN"]
++
++
++def test_output_exports_csv_with_header_and_one_row_per_molecule(tmp_path: Path) -> None:
++    """The .csv export writes a header row followed by one row per molecule."""
++    output = _sample_output()
++
++    output.export("gen", tmp_path, file_format="csv")
++
++    with (tmp_path / "gen.csv").open(newline="") as handle:
++        rows = list(csv.reader(handle))
++
++    assert rows[0] == ["smiles", "label", "qed", "molecular_weight", "num_atoms"]
++    assert [row[0] for row in rows[1:]] == ["CCO", "c1ccccc1", "CCN"]
++    assert [row[1] for row in rows[1:]] == ["target_a", "target_a", "target_b"]
++
++
++def test_output_exports_sdf_concatenating_posed_molecules(tmp_path: Path) -> None:
++    """The .sdf export emits only posed molecules, each closed with a $$$$ delimiter."""
++    output = _sample_output()
++
++    output.export("gen", tmp_path, file_format="sdf")
++
++    sdf_text = (tmp_path / "gen.sdf").read_text()
++    # Only the one molecule carrying a pose contributes a block.
++    assert sdf_text.count("$$$$\n") == 1
++    assert sdf_text.endswith("$$$$\n")
++    assert "M  END" in sdf_text
++
++
++def test_output_exports_valid_json(tmp_path: Path) -> None:
++    """The .json export is parseable and preserves the generation-set structure."""
++    output = _sample_output()
++
++    output.export("gen", tmp_path, file_format="json")
++
++    parsed = json.loads((tmp_path / "gen.json").read_text())
++    assert [gen_set["label"] for gen_set in parsed["generation_sets"]] == ["target_a", "target_b"]
++    assert parsed["generation_sets"][0]["molecules"][0]["smiles"] == "CCO"
++
++
++def test_output_rejects_an_unsupported_export_format(tmp_path: Path) -> None:
++    """An unsupported file format is refused rather than silently skipped."""
++    output = _sample_output()
++
++    with pytest.raises(ValueError):
++        output.export("gen", tmp_path, file_format="xyz")
++
++
++# Generation-set sequence protocol
++
++
++def test_generation_set_is_a_sequence_over_its_molecules() -> None:
++    """A DrugFlowGenerationSet supports len, indexing, and iteration over its molecules."""
++    generation_set = _sample_output().generation_sets[0]
++
++    assert len(generation_set) == 2
++    assert generation_set[0].smiles == "CCO"
++    assert [molecule.smiles for molecule in generation_set] == ["CCO", "c1ccccc1"]
++
++
++# GPU execution
++
++
++@pytest.mark.benchmark("drugflow-generate")
++@pytest.mark.slow
++@pytest.mark.uses_gpu
++def test_drugflow_generate_benchmark(request: pytest.FixtureRequest) -> None:
++    """Benchmark drugflow-generate: 10 molecules for one pocket (cold + warm)."""
++    inputs = example_input()
++    config = DrugFlowGenerateConfig(num_molecules_per_target=10)
++
++    result = benchmark_twice(request, "drugflow", lambda: run_drugflow_generate(inputs=inputs, config=config))
++
++    assert result.tool_id == "drugflow-generate"
++    assert len(result.generation_sets) == 1
++    assert all(mol.smiles for mol in result.molecules)
++
++
++@pytest.mark.uses_gpu
++def test_drugflow_generate_basic_execution() -> None:
++    """DrugFlow generates one set of molecules for a single pocket through the managed worker."""
++    inputs = example_input()
++    config = DrugFlowGenerateConfig(num_molecules_per_target=4, device="cuda")
++
++    result = run_drugflow_generate(inputs=inputs, config=config)
++
++    assert result.success
++    assert result.tool_id == "drugflow-generate"
++    assert len(result.generation_sets) == 1
+-- 
+2.43.0
+

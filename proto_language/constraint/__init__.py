@@ -40,6 +40,7 @@ from proto_language.constraint.protein_structure import (
     StructureBasedConstraintConfig,
     af3_chain_pair_prot_dna_iptm_constraint,
     af3_offtarget_iptm_specificity_constraint,
+    boltz2_affinity_constraint,
     boltz_binding_strength_constraint,
     consensus_operator_specificity_constraint,
     dbp_design_metrics_constraint,
@@ -221,6 +222,7 @@ __all__ = [
     "protein_symmetry_ring_constraint",
     "protein_globularity_constraint",
     "boltz_binding_strength_constraint",
+    "boltz2_affinity_constraint",
     "pyrosetta_interface_constraint",
     # Protein quality
     "protein_length_constraint",

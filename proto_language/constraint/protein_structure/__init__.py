@@ -8,6 +8,9 @@ from proto_language.constraint.protein_structure.af3_offtarget_iptm_specificity_
     AF3OffTargetIPTMSpecificityConfig,
     af3_offtarget_iptm_specificity_constraint,
 )
+from proto_language.constraint.protein_structure.boltz2_affinity_constraint import (
+    boltz2_affinity_constraint,
+)
 from proto_language.constraint.protein_structure.boltz_binding_strength_constraint import (
     boltz_binding_strength_constraint,
 )
@@ -115,6 +118,7 @@ __all__ = [
     "protein_symmetry_ring_constraint",
     "protein_globularity_constraint",
     "boltz_binding_strength_constraint",
+    "boltz2_affinity_constraint",
     "PyRosettaInterfaceConfig",
     "pyrosetta_interface_constraint",
     "AF3ChainPairProtDNAIPTMConfig",

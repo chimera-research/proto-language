@@ -62,7 +62,8 @@ class Generator(ABC):
 - Always call `self._validate_generator()` as first line in `_sample()`
 - Always use `@final` decorator on the class to prevent subclassing
 - `_sample()` modifies sequences **in-place** — it returns nothing
-- Declare the `input_type` classvar on the concrete class (no default on the base — every concrete generator must set it). For generators that take dynamic conditioning data via `CyclingOptimizer`, the conditioning data is passed as the **first non-self positional argument** to `_sample()` — make that the conditioning kwarg (`prompts` for autoregressive, `structure_inputs` for inverse folding).
+- Declare the `input_type` classvar on the concrete class (no default on the base — every concrete generator must set it).
+- **De novo ligand generators** (e.g. `DrugFlowGenerator`) set `generates_ligands = True` so `assign()` accepts a ligand segment, plus `input_type = GeneratorInputType.STARTING_SEQUENCE` and `allows_empty_starting_sequence = True` so the ligand segment can be created empty (`Segment(sequence="", sequence_type="ligand")`). `_sample()` then writes generated SMILES into `proposal_sequences` (and may attach a predicted pose via `_preserve_structure_after_sample`). Every other generator leaves `generates_ligands` at its `False` default and keeps rejecting ligand segments. For generators that take dynamic conditioning data via `CyclingOptimizer`, the conditioning data is passed as the **first non-self positional argument** to `_sample()` — make that the conditioning kwarg (`prompts` for autoregressive, `structure_inputs` for inverse folding).
 - Per-proposal diagnostics go to ``proposal._generator_metadata[self._spec.key]`` (dict), namespaced by the registry key. Don't write to ``proposal._metadata``: that's a free-form user bag and prefixed keys collide across generators.
 
 ## Input Kinds
@@ -105,7 +106,7 @@ Summary of the workflow:
 | `description` | `str` | Yes | What this generator does |
 | `uses_gpu` | `bool` | No | Whether generator requires GPU |
 | `tools_called` | `List[str]` | No | Default `[]` |
-| `supported_sequence_types` | `List[str]` | No | Default `[]` (= all types). Options: `"dna"`, `"rna"`, `"protein"`. Ligand segments are immutable fixed targets — `Generator.assign()` rejects them, so do not list `"ligand"` here. |
+| `supported_sequence_types` | `List[str]` | No | Default `[]` (= all types). Options: `"dna"`, `"rna"`, `"protein"`, `"ligand"`. Ligand segments are fixed targets by default — `Generator.assign()` rejects them unless the generator class sets `generates_ligands = True` (a de novo ligand generator such as `DrugFlowGenerator`). Only list `"ligand"` for such a generator. |
 
 `category` is **not** a decorator argument — it's auto-derived from the class's `input_type` classvar via `INPUT_TYPE_TO_CATEGORY` in `generator_registry.py`.
 
